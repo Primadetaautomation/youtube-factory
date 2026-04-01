@@ -1,0 +1,12 @@
+.env
+output/
+temp/
+__pycache__/
+*.pyc
+.pytest_cache/
+client_secret.json
+token.json
+*.db
+.DS_Store
+videoforge/
+node_modules/

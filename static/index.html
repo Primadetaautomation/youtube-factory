@@ -1,0 +1,2678 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YouTube Factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* ── Reset & Base ─────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #08080c;
+  --surface: #111118;
+  --surface-2: #1a1a24;
+  --surface-3: #22222e;
+  --border: #2a2a3a;
+  --border-light: #3a3a4e;
+  --text: #e8e8f0;
+  --text-dim: #8888a0;
+  --text-muted: #55556a;
+  --accent: #ff3d3d;
+  --accent-glow: rgba(255, 61, 61, 0.25);
+  --green: #2dd4a0;
+  --green-glow: rgba(45, 212, 160, 0.2);
+  --amber: #f59e0b;
+  --radius: 10px;
+  --font: 'Outfit', -apple-system, sans-serif;
+  --mono: 'JetBrains Mono', monospace;
+}
+
+html { font-size: 15px; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+/* ── Grain overlay ────────────────────────── */
+body::after {
+  content: '';
+  position: fixed; inset: 0;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+  pointer-events: none;
+  z-index: 9999;
+}
+
+/* ── Layout ───────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 100vh;
+}
+
+/* ── Sidebar ──────────────────────────────── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 2rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.logo-icon {
+  width: 36px; height: 36px;
+  background: var(--accent);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font-size: 1.1rem;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.logo h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.logo span { color: var(--text-dim); font-size: 0.75rem; font-weight: 400; }
+
+/* Pipeline steps */
+.pipeline { display: flex; flex-direction: column; gap: 2px; }
+.pipe-step {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  cursor: default;
+}
+.pipe-step .num {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  font-family: var(--mono);
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+.pipe-step.active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.pipe-step.active .num {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 0 12px var(--accent-glow);
+}
+.pipe-step.done { color: var(--green); }
+.pipe-step.done .num {
+  background: var(--green);
+  border-color: var(--green);
+  color: var(--bg);
+  font-size: 0.65rem;
+}
+
+/* API badges */
+.api-status { display: flex; flex-direction: column; gap: 0.4rem; margin-top: auto; }
+.api-badge {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.75rem; color: var(--text-dim);
+  font-family: var(--mono);
+}
+.api-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-muted);
+}
+.api-dot.ok { background: var(--green); box-shadow: 0 0 6px var(--green-glow); }
+.api-dot.err { background: var(--accent); }
+
+/* ── Main content ─────────────────────────── */
+.main {
+  padding: 2.5rem 3rem;
+  max-width: 960px;
+}
+
+.step-header {
+  margin-bottom: 2rem;
+}
+.step-header .label {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--accent);
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  margin-bottom: 0.4rem;
+}
+.step-header h2 {
+  font-size: 1.75rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  line-height: 1.2;
+}
+.step-header p {
+  color: var(--text-dim);
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+
+/* ── Form elements ────────────────────────── */
+input[type="text"], textarea, select {
+  width: 100%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 0.95rem;
+  padding: 0.85rem 1rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+textarea { resize: vertical; min-height: 200px; line-height: 1.6; }
+select { cursor: pointer; }
+
+.input-row {
+  display: flex;
+  gap: 0.75rem;
+  align-items: stretch;
+}
+.input-row input { flex: 1; }
+.input-row select { width: 120px; flex-shrink: 0; }
+
+label {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-bottom: 0.4rem;
+  font-weight: 500;
+}
+
+/* ── Buttons ──────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: var(--radius);
+  font-family: var(--font);
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-decoration: none;
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+.btn-primary:hover:not(:disabled) {
+  background: #ff5252;
+  box-shadow: 0 0 30px var(--accent-glow);
+  transform: translateY(-1px);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+.btn-ghost:hover { border-color: var(--border-light); color: var(--text); }
+/* Settings panel */
+.settings-panel { margin-top: 1rem; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+.settings-toggle { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: color 0.2s; }
+.settings-toggle:hover { color: var(--text-primary); }
+.settings-panel[open] .settings-toggle { color: var(--text-primary); border-bottom: 1px solid var(--border); }
+.settings-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; padding: 1rem; }
+.setting-group label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.35rem; font-weight: 500; }
+.setting-group select, .setting-group input[type="range"] { width: 100%; }
+.setting-group input[type="range"] { accent-color: var(--red); height: 6px; }
+@media (max-width: 640px) { .settings-grid { grid-template-columns: 1fr 1fr; } }
+
+/* Tools result cards */
+.results-list { display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.75rem; }
+.result-card { padding: 0.75rem 1rem; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.result-card:hover { border-color: var(--red); background: rgba(255,61,61,0.05); }
+.score-badge { background: var(--red); color: white; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+.btn-sm { font-size: 0.75rem; padding: 0.25rem 0.5rem; }
+
+/* Login screen */
+.login-screen { display: flex; align-items: center; justify-content: center; min-height: 100vh; background: var(--bg); }
+.login-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 2.5rem; width: 100%; max-width: 400px; text-align: center; }
+
+.btn-row {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 2rem;
+}
+.btn-row .spacer { flex: 1; }
+
+/* ── Cards ────────────────────────────────── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+
+/* ── Clip grid ────────────────────────────── */
+.visual-block {
+  margin-bottom: 2rem;
+  padding-bottom: 2rem;
+  border-bottom: 1px solid var(--border);
+}
+.visual-block:last-child { border-bottom: none; }
+.visual-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+.visual-query {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-bottom: 0.75rem;
+}
+
+.clip-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 0.6rem;
+}
+.clip-option {
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+}
+.clip-option:hover { border-color: var(--border-light); transform: translateY(-2px); }
+.clip-option.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 15px var(--accent-glow);
+}
+.clip-option.selected::after {
+  content: '\2713';
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 20px; height: 20px;
+  background: var(--accent);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.65rem;
+  color: white;
+  font-weight: 700;
+}
+.clip-option img {
+  width: 100%;
+  aspect-ratio: 16/9;
+  object-fit: cover;
+  display: block;
+}
+.clip-option .clip-info {
+  padding: 0.4rem 0.5rem;
+  background: var(--surface-2);
+}
+.clip-option .clip-title {
+  font-size: 0.65rem;
+  line-height: 1.3;
+  color: var(--text-dim);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.clip-option .clip-channel {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-top: 0.15rem;
+}
+
+/* ── AI match badges & highlights ────────── */
+.ai-match-btn {
+  background: linear-gradient(135deg, #7c3aed, #4f46e5);
+  color: white;
+  box-shadow: 0 0 20px rgba(124, 58, 237, 0.3);
+}
+.ai-match-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.4);
+  transform: translateY(-1px);
+}
+.clip-option.ai-recommended {
+  border-color: var(--green) !important;
+  box-shadow: 0 0 15px var(--green-glow) !important;
+}
+.ai-badge {
+  position: absolute;
+  top: 6px; left: 6px;
+  background: var(--green);
+  color: var(--bg);
+  font-size: 0.55rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  z-index: 2;
+}
+.ai-reason {
+  font-size: 0.7rem;
+  color: var(--green);
+  font-style: italic;
+  margin-top: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(45, 212, 160, 0.08);
+  border-radius: 6px;
+  border-left: 2px solid var(--green);
+}
+.ai-confidence {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  margin-left: 0.5rem;
+}
+.ai-analyzing {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: rgba(124, 58, 237, 0.1);
+  border: 1px solid rgba(124, 58, 237, 0.3);
+  border-radius: var(--radius);
+  margin-bottom: 1.5rem;
+  font-size: 0.85rem;
+  color: #a78bfa;
+}
+.ai-analyzing .spinner { border-top-color: #7c3aed; }
+
+/* ── Scenes accordion ─────────────────────── */
+.scene-block {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+.scene-header {
+  padding: 0.75rem 1rem;
+  background: var(--surface-2);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.scene-header:hover { background: var(--surface-3); }
+.scene-body { padding: 1rem; display: none; font-size: 0.85rem; line-height: 1.6; color: var(--text-dim); }
+.scene-block.open .scene-body { display: block; }
+.scene-block.open .scene-arrow { transform: rotate(180deg); }
+.scene-arrow { transition: transform 0.2s; font-size: 0.7rem; }
+
+/* ── Progress ─────────────────────────────── */
+.progress-bar {
+  height: 4px;
+  background: var(--surface-3);
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 1rem 0;
+}
+.progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.3s;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+.download-log {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 1.8;
+  color: var(--text-dim);
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 1rem;
+  background: var(--surface);
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+}
+.log-ok { color: var(--green); }
+.log-err { color: var(--accent); }
+
+/* ── Audio player ─────────────────────────── */
+.audio-player {
+  margin: 1.5rem 0;
+}
+.audio-player audio { width: 100%; border-radius: var(--radius); }
+
+/* ── Video preview ────────────────────────── */
+.video-preview {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin: 1.5rem 0;
+}
+.video-preview video { width: 100%; display: block; }
+
+/* ── Thumbnail preview ────────────────────── */
+.thumb-preview {
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  max-width: 400px;
+}
+.thumb-preview img { width: 100%; display: block; }
+
+/* ── Two-col layout ───────────────────────── */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+/* ── Spinner ──────────────────────────────── */
+.spinner-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem 0;
+  gap: 1.25rem;
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner-text {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+/* ── Success banner ───────────────────────── */
+.success-banner {
+  background: linear-gradient(135deg, rgba(45,212,160,0.1), rgba(45,212,160,0.05));
+  border: 1px solid rgba(45,212,160,0.3);
+  border-radius: var(--radius);
+  padding: 2rem;
+  text-align: center;
+}
+.success-banner h3 { color: var(--green); font-size: 1.3rem; margin-bottom: 0.5rem; }
+.success-banner a { color: var(--accent); text-decoration: none; font-weight: 600; }
+.success-banner a:hover { text-decoration: underline; }
+
+/* ── Error ────────────────────────────────── */
+.error-msg {
+  background: rgba(255,61,61,0.1);
+  border: 1px solid rgba(255,61,61,0.3);
+  border-radius: var(--radius);
+  padding: 1rem;
+  color: var(--accent);
+  font-size: 0.85rem;
+  margin-top: 1rem;
+}
+
+/* ── Tabs ─────────────────────────────────── */
+.tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1.5rem;
+}
+.tab {
+  padding: 0.7rem 1.25rem;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.tab:hover { color: var(--text-dim); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.tab-content { display: none; }
+.tab-content.active { display: block; }
+
+/* ── Mode switcher ─────────────────────────── */
+.mode-switch {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 3px;
+  margin-bottom: 1rem;
+}
+.mode-btn {
+  flex: 1;
+  padding: 0.5rem;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.mode-btn.active {
+  background: var(--accent);
+  color: white;
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* ── Week planner ─────────────────────────── */
+.week-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.day-row {
+  display: grid;
+  grid-template-columns: 90px 1fr 100px;
+  gap: 0.75rem;
+  align-items: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 1rem;
+}
+.day-label {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+.day-date {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+.batch-status {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  text-align: right;
+}
+.batch-status.ready { color: var(--green); }
+.batch-status.error { color: var(--accent); }
+.batch-status.pending { color: var(--text-muted); }
+.batch-status.uploaded { color: var(--green); }
+
+.batch-progress {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.5rem;
+  margin-top: 1rem;
+}
+.batch-log {
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  line-height: 2;
+  color: var(--text-dim);
+  margin-top: 1rem;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* ── Batch progress header ───────────────── */
+.batch-header {
+  background: linear-gradient(135deg, var(--surface-2), var(--surface-3));
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1rem 1.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.batch-header .batch-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.batch-header .batch-topic {
+  font-size: 0.8rem;
+  color: var(--text-dim);
+  margin-top: 0.2rem;
+}
+.batch-dots { display: flex; gap: 0.5rem; }
+.batch-dots span {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 600;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  transition: all 0.3s;
+}
+.batch-dots span.done { background: var(--green); color: var(--bg); border-color: var(--green); }
+.batch-dots span.active { background: var(--accent); color: white; border-color: var(--accent); box-shadow: 0 0 10px var(--accent-glow); }
+
+/* ── Animations ───────────────────────────── */
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Scrollbar ────────────────────────────── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+</style>
+</head>
+<body>
+
+<!-- Login Screen -->
+<div id="loginScreen" class="login-screen">
+  <div class="login-card">
+    <div class="logo-icon" style="font-size:2rem;margin-bottom:0.5rem">&#9654;</div>
+    <h1 style="font-size:1.5rem;margin-bottom:0.25rem">YouTube Factory</h1>
+    <p style="color:var(--text-secondary);margin-bottom:1.5rem">Log in om verder te gaan</p>
+    <div class="setting-group">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="je@email.com" onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()">
+    </div>
+    <div class="setting-group" style="margin-top:0.75rem">
+      <label>Wachtwoord</label>
+      <input type="password" id="loginPassword" placeholder="Wachtwoord" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="loginError" style="color:#ef4444;font-size:0.85rem;margin-top:0.5rem"></div>
+    <button class="btn btn-primary" style="width:100%;margin-top:1rem" onclick="doLogin()">Inloggen</button>
+  </div>
+</div>
+
+<!-- App Shell -->
+<div id="appShell" class="shell" style="display:none">
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">&#9654;</div>
+      <div>
+        <h1>YouTube Factory</h1>
+        <span>automated video pipeline</span>
+      </div>
+    </div>
+
+    <div class="mode-switch">
+      <button class="mode-btn active" id="modeSingle" onclick="switchMode('single')">Video</button>
+      <button class="mode-btn" id="modeShorts" onclick="switchMode('shorts')">Shorts</button>
+      <button class="mode-btn" id="modeBatch" onclick="switchMode('batch')">Weekplanner</button>
+      <button class="mode-btn" id="modeTools" onclick="switchMode('tools')">Tools</button>
+    </div>
+
+    <div class="pipeline" id="pipeline"></div>
+
+    <div class="api-status" id="apiStatus"></div>
+
+    <button class="btn btn-ghost" style="width:100%;margin-top:0.5rem" onclick="resetPipeline()">Reset pipeline</button>
+    <button class="btn btn-ghost" style="width:100%;margin-top:0.25rem;color:var(--text-secondary)" onclick="doLogout()">Uitloggen</button>
+  </aside>
+
+  <!-- Main -->
+  <main class="main" id="mainContent"></main>
+</div>
+
+<script>
+// ── State ──────────────────────────────────
+const state = {
+  step: 0,
+  topic: '',
+  duration: 4,
+  scriptData: null,
+  audioPath: null,
+  audioDuration: 0,
+  wordTimestamps: null,
+  visualsData: null,
+  aiMatches: null,
+  aiAnalyzing: false,
+  clips: [],
+  finalVideo: null,
+  thumbnailPath: null,
+  metadata: null,
+  voiceoverSpeed: 1.0,
+  voiceoverStability: 50,
+  voiceoverSimilarity: 75,
+  voiceoverStyle: 0,
+  config: {
+    aspect_ratio: '16:9',
+    resolution: '1080p',
+    style: 'modern',
+    sub_style: '',
+    max_clip_duration: 3.0,
+    subtitle_style: 'default',
+    subtitle_font_size: 48,
+    subtitle_position: 'bottom',
+    content_type: 'standard',
+    quality_crf: 23,
+    quality_preset: 'fast',
+  },
+};
+
+const STEPS = [
+  'Onderwerp kiezen',
+  'Script reviewen',
+  'Voiceover maken',
+  'Clips zoeken & kiezen',
+  'Clips downloaden',
+  'Video samenstellen',
+  'Thumbnail & metadata',
+  'Uploaden',
+];
+
+// ── Auth ──────────────────────────────────
+function getToken() { return localStorage.getItem('yt_factory_token') || ''; }
+function setToken(token) { localStorage.setItem('yt_factory_token', token); }
+function clearToken() { localStorage.removeItem('yt_factory_token'); }
+function isLoggedIn() { return !!getToken(); }
+
+function showLogin() {
+  document.getElementById('appShell').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+}
+
+function showApp() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appShell').style.display = 'flex';
+}
+
+async function doLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const err = document.getElementById('loginError');
+  err.textContent = '';
+
+  if (!email || !password) { err.textContent = 'Vul email en wachtwoord in.'; return; }
+
+  try {
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Login mislukt');
+    setToken(data.token);
+    showApp();
+    render();
+  } catch(e) {
+    err.textContent = e.message;
+  }
+}
+
+function doLogout() {
+  clearToken();
+  showLogin();
+}
+
+// ── API helper ─────────────────────────────
+async function api(endpoint, body = null, timeoutMs = 120000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const opts = {
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer ' + getToken(),
+    },
+    signal: controller.signal,
+  };
+  if (body) { opts.method = 'POST'; opts.body = JSON.stringify(body); }
+  try {
+    const res = await fetch(`/api/${endpoint}`, opts);
+    clearTimeout(timer);
+    if (res.status === 401) { clearToken(); showLogin(); throw new Error('Sessie verlopen, log opnieuw in.'); }
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || 'Server error');
+    return data;
+  } catch(e) {
+    clearTimeout(timer);
+    if (e.name === 'AbortError') throw new Error('Request timed out \u2014 de server deed er te lang over. Probeer opnieuw.');
+    throw e;
+  }
+}
+
+// ── Render pipeline sidebar ────────────────
+function renderPipeline() {
+  const el = document.getElementById('pipeline');
+  if (currentMode === 'batch' && !isBatchActive()) {
+    el.innerHTML = '<div class="pipe-step active"><span class="num">W</span>Weekplanner</div>';
+    return;
+  }
+  el.innerHTML = STEPS.map((name, i) => {
+    let cls = '';
+    if (i < state.step) cls = 'done';
+    else if (i === state.step) cls = 'active';
+    const icon = i < state.step ? '\u2713' : (i + 1);
+    return `<div class="pipe-step ${cls}"><span class="num">${icon}</span>${name}</div>`;
+  }).join('');
+}
+
+// ── Render API status ──────────────────────
+async function renderApiStatus() {
+  try {
+    const s = await api('status');
+    const el = document.getElementById('apiStatus');
+    el.innerHTML = ['openai', 'elevenlabs', 'youtube'].map(k =>
+      `<div class="api-badge"><span class="api-dot ${s[k] ? 'ok' : 'err'}"></span>${k}</div>`
+    ).join('');
+  } catch(e) {}
+}
+
+// ── Batch helpers ──────────────────────────
+function isBatchActive() {
+  return currentMode === 'batch' && batchState.currentIndex >= 0 && batchState.currentIndex < batchState.queue.length;
+}
+
+function isBatchComplete() {
+  return currentMode === 'batch' && batchState.currentIndex >= 0 && batchState.currentIndex >= batchState.queue.length;
+}
+
+function batchHeaderHtml() {
+  if (!isBatchActive()) return '';
+  const current = batchState.queue[batchState.currentIndex];
+  return `
+    <div class="batch-header">
+      <div>
+        <div class="batch-title">Video ${batchState.currentIndex + 1} van ${batchState.queue.length}</div>
+        <div class="batch-topic">${escHtml(current.topic)}</div>
+      </div>
+      <div class="batch-dots">
+        ${batchState.queue.map((q, i) => {
+          let cls = '';
+          if (i < batchState.currentIndex) cls = 'done';
+          else if (i === batchState.currentIndex) cls = 'active';
+          return `<span class="${cls}">${i + 1}</span>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+// ── Main render switch ─────────────────────
+function render() {
+  renderPipeline();
+  const m = document.getElementById('mainContent');
+
+  if (currentMode === 'batch') {
+    if (isBatchActive()) {
+      // Active batch: render single-video steps with batch header
+      const hdr = batchHeaderHtml();
+      switch(state.step) {
+        case 0:
+          m.innerHTML = hdr + spinner('Script wordt gegenereerd voor \u201C' + escHtml(batchState.queue[batchState.currentIndex].topic) + '\u201D...');
+          break;
+        case 1: renderStep1(m, hdr); break;
+        case 2: renderStep2(m, hdr); break;
+        case 3: renderStep3(m, hdr); break;
+        case 4: renderStep4(m, hdr); break;
+        case 5: renderStep5(m, hdr); break;
+        case 6: renderStep6(m, hdr); break;
+        case 7: renderStep7(m, hdr); break;
+      }
+      return;
+    }
+    if (isBatchComplete()) {
+      renderBatchResults(m);
+      return;
+    }
+    renderBatchForm(m);
+    return;
+  }
+
+  // Tools mode
+  if (currentMode === 'tools') {
+    renderToolsMode(m);
+    return;
+  }
+
+  // Single video / Shorts mode
+  switch(state.step) {
+    case 0: renderStep0(m); break;
+    case 1: renderStep1(m, ''); break;
+    case 2: renderStep2(m, ''); break;
+    case 3: renderStep3(m, ''); break;
+    case 4: renderStep4(m, ''); break;
+    case 5: renderStep5(m, ''); break;
+    case 6: renderStep6(m, ''); break;
+    case 7: renderStep7(m, ''); break;
+  }
+}
+
+// ── STEP 0: Topic ──────────────────────────
+function renderStep0(m) {
+  m.innerHTML = `
+    <div class="fade-in">
+      <div class="step-header">
+        <div class="label">Stap 01</div>
+        <h2>${currentMode === 'shorts' ? 'Maak een Short' : 'Kies je onderwerp'}</h2>
+        <p>${currentMode === 'shorts'
+          ? 'Maak een verticale short (9:16) met hook, grote captions en virale impact.'
+          : 'Voer een onderwerp in en kies de videoduur. AI genereert een compleet script met scene-suggesties.'
+        }</p>
+      </div>
+      <div class="input-row">
+        <input type="text" id="topicInput" placeholder="bijv. Carlos Alcaraz, Lionel Messi, Max Verstappen..." value="${escHtml(state.topic)}">
+        <select id="durationSelect">
+          ${currentMode === 'shorts'
+            ? [0.25, 0.5, 1].map(d => `<option value="${d}" ${d === state.duration ? 'selected' : ''}>${d < 1 ? Math.round(d*60) + ' sec' : d + ' min'}</option>`).join('')
+            : Array.from({length:12},(_,i)=>i+1).map(d => `<option value="${d}" ${d === state.duration ? 'selected' : ''}>${d} min</option>`).join('')
+          }
+        </select>
+      </div>
+      <!-- Video Settings Panel -->
+      <details class="settings-panel" id="settingsPanel">
+        <summary class="settings-toggle">⚙ Video-instellingen</summary>
+        <div class="settings-grid">
+          <div class="setting-group">
+            <label>Beeldverhouding</label>
+            <select id="cfgAspect" onchange="state.config.aspect_ratio=this.value">
+              <option value="16:9" ${state.config.aspect_ratio==='16:9'?'selected':''}>16:9 Landscape</option>
+              <option value="9:16" ${state.config.aspect_ratio==='9:16'?'selected':''}>9:16 Shorts / TikTok</option>
+              <option value="1:1" ${state.config.aspect_ratio==='1:1'?'selected':''}>1:1 Instagram</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label>Videokwaliteit</label>
+            <select id="cfgQuality" onchange="applyQualityPreset(this.value)">
+              <option value="draft" ${state.config.quality_preset==='ultrafast'?'selected':''}>Draft (720p snel)</option>
+              <option value="standard" ${state.config.quality_preset==='fast'?'selected':''}>Standaard (1080p)</option>
+              <option value="high" ${state.config.quality_preset==='medium'?'selected':''}>Hoog (4K)</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label>Filmstijl</label>
+            <select id="cfgStyle" onchange="state.config.style=this.value; updateSubStyles()">
+              <option value="modern" ${state.config.style==='modern'?'selected':''}>Modern</option>
+              <option value="vintage" ${state.config.style==='vintage'?'selected':''}>Vintage (60s-70s)</option>
+              <option value="80s" ${state.config.style==='80s'?'selected':''}>80's Neon</option>
+              <option value="90s" ${state.config.style==='90s'?'selected':''}>90's Grunge</option>
+              <option value="2000s" ${state.config.style==='2000s'?'selected':''}>2000's Cinematic</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label>Bewerkstijl</label>
+            <select id="cfgSubStyle" onchange="applySubStyle(this.value)">
+              <option value="" ${state.config.sub_style===''?'selected':''}>Standaard</option>
+              <option value="minimalistisch" ${state.config.sub_style==='minimalistisch'?'selected':''}>Minimalistisch</option>
+              <option value="hyper_edit" ${state.config.sub_style==='hyper_edit'?'selected':''}>Hyper Edit / Fast Pace</option>
+              <option value="gaming" ${state.config.sub_style==='gaming'?'selected':''}>Gaming</option>
+              <option value="cartoon" ${state.config.sub_style==='cartoon'?'selected':''}>Cartoon</option>
+              <option value="documentaire" ${state.config.sub_style==='documentaire'?'selected':''}>Documentaire</option>
+              <option value="slow_pacing" ${state.config.sub_style==='slow_pacing'?'selected':''}>Slow Pacing</option>
+              <option value="dark_tone" ${state.config.sub_style==='dark_tone'?'selected':''}>Dark Tone</option>
+              <option value="hypnotic" ${state.config.sub_style==='hypnotic'?'selected':''}>Hypnotisch</option>
+            </select>
+          </div>
+          <div class="setting-group">
+            <label>Cut-lengte: <span id="clipDurLabel">${state.config.max_clip_duration}s</span></label>
+            <input type="range" id="cfgClipDur" min="1" max="10" step="0.5" value="${state.config.max_clip_duration}"
+              oninput="state.config.max_clip_duration=parseFloat(this.value); document.getElementById('clipDurLabel').textContent=this.value+'s'">
+          </div>
+          <div class="setting-group">
+            <label>Ondertiteling</label>
+            <select id="cfgSubtitle" onchange="applySubtitleStyle(this.value)">
+              <option value="default" ${state.config.subtitle_style==='default'?'selected':''}>Standaard</option>
+              <option value="large_caption" ${state.config.subtitle_style==='large_caption'?'selected':''}>Grote captions (Shorts)</option>
+              <option value="minimal" ${state.config.subtitle_style==='minimal'?'selected':''}>Minimaal</option>
+            </select>
+          </div>
+        </div>
+      </details>
+
+      <div class="btn-row">
+        <div class="spacer"></div>
+        <button class="btn btn-primary" id="generateBtn" onclick="generateScript()">Genereer script</button>
+      </div>
+      <div id="error"></div>
+    </div>
+  `;
+  document.getElementById('topicInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') generateScript();
+  });
+}
+
+// ── Settings helpers ──
+function applyQualityPreset(preset) {
+  const map = {
+    draft:    { resolution: '720p',  quality_crf: 28, quality_preset: 'ultrafast' },
+    standard: { resolution: '1080p', quality_crf: 23, quality_preset: 'fast' },
+    high:     { resolution: '1080p', quality_crf: 18, quality_preset: 'medium' },
+  };
+  Object.assign(state.config, map[preset] || map.standard);
+}
+
+function applySubStyle(name) {
+  state.config.sub_style = name;
+  const overrides = {
+    minimalistisch: { max_clip_duration: 5.0 },
+    hyper_edit:     { max_clip_duration: 1.5, subtitle_style: 'large_caption', subtitle_font_size: 64, subtitle_position: 'center' },
+    gaming:         { max_clip_duration: 2.0, subtitle_style: 'large_caption', subtitle_font_size: 64 },
+    slow_pacing:    { max_clip_duration: 6.0 },
+    dark_tone:      { max_clip_duration: 3.0 },
+    hypnotic:       { max_clip_duration: 4.0 },
+  };
+  if (overrides[name]) {
+    Object.assign(state.config, overrides[name]);
+    const slider = document.getElementById('cfgClipDur');
+    const label = document.getElementById('clipDurLabel');
+    if (slider) { slider.value = state.config.max_clip_duration; }
+    if (label) { label.textContent = state.config.max_clip_duration + 's'; }
+    const subSel = document.getElementById('cfgSubtitle');
+    if (subSel && state.config.subtitle_style) { subSel.value = state.config.subtitle_style; }
+  }
+}
+
+function applySubtitleStyle(style) {
+  state.config.subtitle_style = style;
+  const map = {
+    default:       { subtitle_font_size: 48, subtitle_position: 'bottom' },
+    large_caption: { subtitle_font_size: 72, subtitle_position: 'center' },
+    minimal:       { subtitle_font_size: 36, subtitle_position: 'bottom' },
+  };
+  Object.assign(state.config, map[style] || map.default);
+}
+
+function updateSubStyles() {
+  // Sub-style dropdown stays the same for all film styles
+}
+
+async function generateScript() {
+  const topicEl = document.getElementById('topicInput');
+  const topic = topicEl ? topicEl.value.trim() : state.topic;
+  if (!topic) return;
+  state.topic = topic;
+  const durEl = document.getElementById('durationSelect');
+  if (durEl) state.duration = parseInt(durEl.value);
+
+  const m = document.getElementById('mainContent');
+  const hdr = batchHeaderHtml();
+  m.innerHTML = hdr + spinner('Script wordt gegenereerd door AI...');
+
+  try {
+    state.scriptData = await api('generate-script', { topic, duration: state.duration, config: state.config });
+    state.step = 1;
+    render();
+  } catch(e) {
+    if (isBatchActive()) {
+      m.innerHTML = hdr + `<div class="error-msg">${e.message}</div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="skipBatchVideo('Script mislukt: ' + '${escHtml(e.message)}')">Overslaan</button>
+          <button class="btn btn-primary" onclick="retryBatchVideo()">Opnieuw proberen</button>
+        </div>`;
+    } else {
+      m.innerHTML = '';
+      renderStep0(m);
+      document.getElementById('error').innerHTML = `<div class="error-msg">${e.message}</div>`;
+    }
+  }
+}
+
+// ── STEP 1: Script review ──────────────────
+function renderStep1(m, hdr) {
+  const script = state.scriptData?.script || '';
+  const scenes = state.scriptData?.scenes || [];
+  const inBatch = isBatchActive();
+
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr}
+      <div class="step-header">
+        <div class="label">Stap 02</div>
+        <h2>Script bekijken & aanpassen</h2>
+        <p>Bewerk het script of laat AI het verfijnen met feedback.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab active" onclick="switchTab(this, 'scriptTab')">Script</div>
+        <div class="tab" onclick="switchTab(this, 'scenesTab')">Scenes & Visuals</div>
+      </div>
+      <div class="tab-content active" id="scriptTab">
+        <textarea id="scriptArea">${escHtml(script)}</textarea>
+        <div class="input-row" style="margin-top:0.75rem">
+          <input type="text" id="feedbackInput" placeholder="Feedback voor AI (optioneel): bijv. 'maak het dramatischer'">
+          <button class="btn btn-ghost" onclick="refineScript()">Verfijn met AI</button>
+        </div>
+      </div>
+      <div class="tab-content" id="scenesTab">
+        ${scenes.map((s, i) => `
+          <div class="scene-block open" id="sceneBlock${i}">
+            <div class="scene-header" onclick="this.parentElement.classList.toggle('open')">
+              <span>Scene ${i+1}: ${escHtml(s.section || '')} (${escHtml(s.timestamp || '')})</span>
+              <div style="display:flex;gap:0.5rem;align-items:center">
+                <button class="btn btn-ghost" style="padding:0.2rem 0.5rem;font-size:0.7rem;color:var(--accent)" onclick="event.stopPropagation();removeScene(${i})">Verwijder</button>
+                <span class="scene-arrow">\u25BC</span>
+              </div>
+            </div>
+            <div class="scene-body">
+              <strong>Narration:</strong>
+              <textarea style="width:100%;min-height:60px;margin:0.4rem 0;font-size:0.8rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:0.5rem;font-family:var(--font);resize:vertical"
+                        onchange="state.scriptData.scenes[${i}].narration=this.value">${escHtml(s.narration || '')}</textarea>
+              <strong>Zoektermen:</strong>
+              ${(s.visuals || []).map((v, vi) => `
+                <div style="display:flex;gap:0.5rem;align-items:center;margin:0.4rem 0">
+                  <input type="text" value="${escHtml(v.search_query || '')}"
+                         onchange="state.scriptData.scenes[${i}].visuals[${vi}].search_query=this.value"
+                         style="flex:1;font-family:var(--mono);font-size:0.8rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+                  <input type="text" value="${escHtml(v.description || '')}"
+                         onchange="state.scriptData.scenes[${i}].visuals[${vi}].description=this.value"
+                         placeholder="beschrijving"
+                         style="flex:1;font-size:0.8rem;padding:0.4rem 0.6rem;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text)">
+                  <button class="btn btn-ghost" style="padding:0.2rem 0.4rem;font-size:0.7rem;color:var(--accent)"
+                          onclick="removeVisual(${i},${vi})">✕</button>
+                </div>
+              `).join('')}
+              <button class="btn btn-ghost" style="font-size:0.75rem;margin-top:0.3rem;padding:0.3rem 0.6rem"
+                      onclick="addVisual(${i})">+ Zoekterm toevoegen</button>
+            </div>
+          </div>
+        `).join('')}
+        <button class="btn btn-ghost" style="margin-top:1rem;width:100%" onclick="addScene()">+ Scene toevoegen</button>
+      </div>
+      <div class="btn-row">
+        ${inBatch
+          ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Overgeslagen door gebruiker\')">Overslaan</button>'
+          : '<button class="btn btn-ghost" onclick="state.step=0;render()">Terug</button>'
+        }
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="goToVoiceover()">Voiceover genereren</button>
+      </div>
+      <div id="error"></div>
+    </div>
+  `;
+}
+
+async function refineScript() {
+  const script = document.getElementById('scriptArea').value;
+  const feedback = document.getElementById('feedbackInput').value.trim();
+  if (!feedback) return;
+
+  const hdr = batchHeaderHtml();
+  document.getElementById('mainContent').innerHTML = hdr + spinner('Script wordt verfijnd...');
+  try {
+    state.scriptData = await api('refine-script', { script, feedback });
+    state.step = 1;
+    render();
+  } catch(e) {
+    render();
+    const errEl = document.getElementById('error');
+    if (errEl) errEl.innerHTML = `<div class="error-msg">${e.message}</div>`;
+  }
+}
+
+function removeScene(i) {
+  state.scriptData.scenes.splice(i, 1);
+  render();
+}
+
+function addScene() {
+  state.scriptData.scenes.push({
+    timestamp: '', section: 'NIEUW', narration: '',
+    visuals: [{ search_query: '', description: '', line: '' }],
+  });
+  render();
+}
+
+function removeVisual(sceneIdx, visualIdx) {
+  state.scriptData.scenes[sceneIdx].visuals.splice(visualIdx, 1);
+  render();
+}
+
+function addVisual(sceneIdx) {
+  state.scriptData.scenes[sceneIdx].visuals.push({ search_query: '', description: '', line: '' });
+  render();
+}
+
+function goToVoiceover() {
+  const area = document.getElementById('scriptArea');
+  if (area) state.scriptData.script = area.value;
+  state.step = 2;
+  render();
+}
+
+// ── STEP 2: Voiceover ──────────────────────
+function renderStep2(m, hdr) {
+  if (state._voiceoverGenerating) {
+    m.innerHTML = hdr + spinner('Voiceover wordt gegenereerd met ElevenLabs...');
+    return;
+  }
+
+  if (state.audioPath) {
+    m.innerHTML = `
+      <div class="fade-in">
+        ${hdr}
+        <div class="step-header">
+          <div class="label">Stap 03</div>
+          <h2>Voiceover</h2>
+          <p>Duur: ${state.audioDuration.toFixed(1)} seconden · Snelheid: ${state.voiceoverSpeed || 1.0}x</p>
+        </div>
+        <div class="audio-player">
+          <audio controls src="/output/${state.audioPath}"></audio>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="state.step=1;render()">Terug</button>
+          <button class="btn btn-ghost" onclick="state.audioPath=null;render()">Opnieuw genereren</button>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" onclick="state.step=3;render()">Clips zoeken</button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  // Show voice settings form
+  const spd = state.voiceoverSpeed || 1.0;
+  const stab = state.voiceoverStability ?? 50;
+  const sim = state.voiceoverSimilarity ?? 75;
+  const sty = state.voiceoverStyle ?? 0;
+  const voices = state._voicePresets || [];
+  const selVoice = state.selectedVoiceId || '';
+
+  // Load voices if not loaded
+  if (!state._voicePresets) {
+    api('voices').then(r => { state._voicePresets = r.voices; render(); }).catch(() => {});
+  }
+
+  function voiceSlider(id, label, val, stateKey, min, max, unit) {
+    return `
+      <div style="margin-bottom:1.2rem">
+        <label style="display:flex;justify-content:space-between;margin-bottom:0.4rem">
+          <span>${label}</span>
+          <span id="${id}Val" style="font-family:var(--mono);color:var(--accent);font-weight:600">${val}${unit}</span>
+        </label>
+        <input type="range" id="${id}" min="${min}" max="${max}" step="1" value="${val}"
+               oninput="state.${stateKey}=parseInt(this.value);document.getElementById('${id}Val').textContent=this.value+'${unit}'"
+               style="width:100%;accent-color:var(--accent)">
+      </div>`;
+  }
+
+  const maleVoices = voices.filter(v => v.gender === 'man');
+  const femaleVoices = voices.filter(v => v.gender === 'vrouw');
+
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr}
+      <div class="step-header">
+        <div class="label">Stap 03</div>
+        <h2>Voiceover instellingen</h2>
+        <p>Kies een stem, pas snelheid en karakteristieken aan.</p>
+      </div>
+
+      ${voices.length ? `
+      <div style="margin-bottom:1.5rem">
+        <label style="margin-bottom:0.5rem;display:block;font-weight:500">Mannenstemmen</label>
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-bottom:1rem">
+          ${maleVoices.map(v => `
+            <div onclick="previewVoice('${v.id}')"
+                 id="voice-${v.id}"
+                 style="cursor:pointer;padding:0.7rem 1rem;border-radius:var(--radius);border:2px solid ${selVoice===v.id?'var(--accent)':'var(--border)'};background:${selVoice===v.id?'var(--accent-glow)':'var(--surface)'};min-width:130px;transition:all 0.2s;position:relative">
+              <div style="font-weight:600;font-size:0.85rem">${v.name}</div>
+              <div style="font-size:0.7rem;color:var(--text-dim)">${v.accent}</div>
+              <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem">${v.desc}</div>
+              ${selVoice===v.id && state._previewPlaying===v.id ? '<div style="font-size:0.6rem;color:var(--green);margin-top:0.3rem">Speelt af...</div>' : ''}
+              ${selVoice===v.id && state._previewLoading===v.id ? '<div style="font-size:0.6rem;color:var(--amber);margin-top:0.3rem">Laden...</div>' : ''}
+            </div>
+          `).join('')}
+        </div>
+        <label style="margin-bottom:0.5rem;display:block;font-weight:500">Vrouwenstemmen</label>
+        <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+          ${femaleVoices.map(v => `
+            <div onclick="previewVoice('${v.id}')"
+                 id="voice-${v.id}"
+                 style="cursor:pointer;padding:0.7rem 1rem;border-radius:var(--radius);border:2px solid ${selVoice===v.id?'var(--accent)':'var(--border)'};background:${selVoice===v.id?'var(--accent-glow)':'var(--surface)'};min-width:130px;transition:all 0.2s;position:relative">
+              <div style="font-weight:600;font-size:0.85rem">${v.name}</div>
+              <div style="font-size:0.7rem;color:var(--text-dim)">${v.accent}</div>
+              <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem">${v.desc}</div>
+              ${selVoice===v.id && state._previewPlaying===v.id ? '<div style="font-size:0.6rem;color:var(--green);margin-top:0.3rem">Speelt af...</div>' : ''}
+              ${selVoice===v.id && state._previewLoading===v.id ? '<div style="font-size:0.6rem;color:var(--amber);margin-top:0.3rem">Laden...</div>' : ''}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+      ` : ''}
+
+      <div style="max-width:450px;margin:1.5rem 0">
+        <div style="margin-bottom:1.2rem">
+          <label style="display:flex;justify-content:space-between;margin-bottom:0.4rem">
+            <span>Snelheid</span>
+            <span id="speedVal" style="font-family:var(--mono);color:var(--accent);font-weight:600">${spd.toFixed(2)}x</span>
+          </label>
+          <input type="range" id="speedSlider" min="0.5" max="2.0" step="0.05" value="${spd}"
+                 oninput="state.voiceoverSpeed=parseFloat(this.value);document.getElementById('speedVal').textContent=parseFloat(this.value).toFixed(2)+'x'"
+                 style="width:100%;accent-color:var(--accent)">
+          <div style="display:flex;justify-content:space-between;font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem">
+            <span>0.5x langzaam</span><span>1.0x normaal</span><span>2.0x snel</span>
+          </div>
+        </div>
+        ${voiceSlider('stabSlider', 'Stability', stab, 'voiceoverStability', 0, 100, '%')}
+        ${voiceSlider('simSlider', 'Similarity', sim, 'voiceoverSimilarity', 0, 100, '%')}
+        ${voiceSlider('styleSlider', 'Style Exaggeration', sty, 'voiceoverStyle', 0, 100, '%')}
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=1;render()">Terug</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="startVoiceover()">Voiceover genereren</button>
+      </div>
+    </div>
+  `;
+}
+
+let _previewAudio = null;
+
+async function previewVoice(voiceId) {
+  // Stop any playing preview
+  if (_previewAudio) { _previewAudio.pause(); _previewAudio = null; }
+
+  state.selectedVoiceId = voiceId;
+  state._previewPlaying = null;
+  state._previewLoading = voiceId;
+  render();
+
+  // Pick a random sentence from the script
+  const script = state.scriptData?.script || 'Dit is een voorbeeldzin voor de stem.';
+  const sentences = script.split(/[.!?]+/).map(s => s.trim()).filter(s => s.length > 20 && s.length < 150);
+  const sample = sentences.length ? sentences[Math.floor(Math.random() * sentences.length)] + '.' : script.slice(0, 100);
+
+  try {
+    const res = await api('preview-voice', { voice_id: voiceId, text: sample });
+    state._previewLoading = null;
+    state._previewPlaying = voiceId;
+    render();
+
+    _previewAudio = new Audio('data:audio/mp3;base64,' + res.audio_base64);
+    _previewAudio.onended = () => { state._previewPlaying = null; _previewAudio = null; render(); };
+    _previewAudio.play();
+  } catch(e) {
+    state._previewLoading = null;
+    render();
+  }
+}
+
+function startVoiceover() {
+  state._voiceoverGenerating = true;
+  render();
+  generateVoiceover();
+}
+
+async function generateVoiceover() {
+  try {
+    const safeName = state.topic.toLowerCase().replace(/\s+/g, '_').slice(0, 30);
+    const speed = state.voiceoverSpeed || 1.0;
+    const res = await api('generate-voiceover', {
+      script: state.scriptData.script, name: safeName, speed,
+      stability: (state.voiceoverStability ?? 50) / 100,
+      similarity_boost: (state.voiceoverSimilarity ?? 75) / 100,
+      style: (state.voiceoverStyle ?? 0) / 100,
+      voice_id: state.selectedVoiceId || '',
+    });
+    state.audioPath = res.path;
+    state.wordTimestamps = res.word_timestamps || null;
+    state.audioDuration = res.duration;
+    state._voiceoverGenerating = false;
+    render();
+  } catch(e) {
+    state._voiceoverGenerating = false;
+    const m = document.getElementById('mainContent');
+    const hdr = batchHeaderHtml();
+    m.innerHTML = `
+      ${hdr}
+      <div class="error-msg">${e.message}</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=1;render()">Terug</button>
+        ${isBatchActive() ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Voiceover mislukt\')">Overslaan</button>' : ''}
+      </div>
+    `;
+  }
+}
+
+// ── STEP 3: Clip selection ─────────────────
+function renderStep3(m, hdr) {
+  if (!state.visualsData) {
+    m.innerHTML = hdr + spinner('YouTube wordt doorzocht voor elke scene...');
+    searchClips();
+    return;
+  }
+
+  const visuals = state.visualsData;
+  const matches = state.aiMatches;
+
+  // Build a lookup: visual index -> match info
+  const aiMatchMap = {};
+  if (matches) {
+    for (const match of matches) {
+      // Map scene_index + clip_index to the visual index and option index
+      // Each visual corresponds to a clip_index in order
+      const ci = match.clip_index;
+      if (ci !== undefined) {
+        // Find which visual this clip best maps to based on scene
+        const si = match.scene_index;
+        // Map scene to visual: visuals are ordered per scene
+        // Find all visuals for this scene
+        let viForScene = findVisualsForScene(si);
+        if (viForScene.length > 0) {
+          for (const vi of viForScene) {
+            aiMatchMap[vi] = { clipIndex: ci, confidence: match.confidence, reason: match.reason };
+          }
+        }
+      }
+    }
+  }
+
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr}
+      <div class="step-header">
+        <div class="label">Stap 04</div>
+        <h2>Clips zoeken & kiezen</h2>
+        <p>Per scriptregel zie je 5 YouTube resultaten. Klik op de clip die je wilt gebruiken.</p>
+      </div>
+      ${state.aiAnalyzing ? '<div class="ai-analyzing"><div class="spinner" style="width:20px;height:20px;border-width:2px"></div>Gemini analyseert clips...</div>' : ''}
+      <div id="visualBlocks">
+        ${visuals.map((v, vi) => {
+          const aiMatch = aiMatchMap[vi];
+          // Find the option index that corresponds to the AI recommended clip
+          let aiOptionIndex = -1;
+          if (aiMatch) {
+            // The AI match refers to clip_index (download order), which maps to the visual's selected option
+            // But for the Smart Match feature, we need to highlight which option in THIS visual's grid the AI recommends
+            // Since each visual has its own set of options, and the AI analyzed the *downloaded* clips,
+            // the AI's recommendation means: "for this scene, the clip downloaded for visual X is best"
+            // We highlight the currently selected option if this visual's index matches the AI's recommendation
+            aiOptionIndex = v.selected_index || 0;
+          }
+          return `
+          <div class="visual-block">
+            <div class="visual-label">Clip ${vi + 1}: ${escHtml(v.description)}</div>
+            <div class="visual-query">zoekopdracht: ${escHtml(v.search_query)}</div>
+            ${aiMatch ? `<div class="ai-reason">${escHtml(aiMatch.reason)}<span class="ai-confidence">${Math.round(aiMatch.confidence * 100)}% match</span></div>` : ''}
+            <div class="clip-grid">
+              ${(v.options || []).map((opt, oi) => {
+                const isSelected = oi === (v.selected_index || 0);
+                const isAiPick = aiMatch && oi === aiOptionIndex;
+                return `
+                <div class="clip-option ${isSelected ? 'selected' : ''} ${isAiPick ? 'ai-recommended' : ''}"
+                     onclick="selectClip(${vi}, ${oi})">
+                  ${isAiPick ? '<div class="ai-badge">AI aanbevolen</div>' : ''}
+                  <img src="${escHtml(opt.thumbnail)}" alt="" loading="lazy">
+                  <div class="clip-info">
+                    <div class="clip-title">${escHtml(opt.title)}</div>
+                    <div class="clip-channel">${escHtml(opt.channel)}</div>
+                  </div>
+                </div>
+              `}).join('')}
+            </div>
+          </div>
+        `}).join('')}
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=2;state.visualsData=null;state.aiMatches=null;render()">Terug</button>
+        <button class="btn ai-match-btn" onclick="runAiMatch()" ${state.aiAnalyzing ? 'disabled' : ''}>
+          ${state.aiMatches ? 'Opnieuw analyseren' : 'Smart Match (AI analyseert clips)'}
+        </button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="state.step=4;render()">Download geselecteerde clips</button>
+      </div>
+    </div>
+  `;
+}
+
+function findVisualsForScene(sceneIndex) {
+  // Map scene index to visual indices. Scenes contain visuals; visuals are flattened.
+  const scenes = state.scriptData?.scenes || [];
+  let vi = 0;
+  for (let si = 0; si < scenes.length; si++) {
+    const count = (scenes[si].visuals || []).length;
+    if (si === sceneIndex) {
+      return Array.from({length: count}, (_, i) => vi + i);
+    }
+    vi += count;
+  }
+  return [];
+}
+
+function selectClip(vi, oi) {
+  state.visualsData[vi].selected_index = oi;
+  const blocks = document.querySelectorAll('.visual-block');
+  if (blocks[vi]) {
+    const options = blocks[vi].querySelectorAll('.clip-option');
+    options.forEach((el, i) => {
+      el.classList.toggle('selected', i === oi);
+    });
+  }
+}
+
+async function runAiMatch() {
+  if (state.aiAnalyzing) return;
+  state.aiAnalyzing = true;
+  render();
+
+  try {
+    // First we need clips downloaded to analyze them. If not yet downloaded, do a quick download.
+    const visuals = state.visualsData || [];
+    const clips = visuals.map((v, i) => {
+      const sel = v.selected_index || 0;
+      const opt = (v.options || [])[sel];
+      return opt ? { url: opt.url, title: opt.title, index: i } : null;
+    }).filter(Boolean);
+
+    // Download clips first (needed for Gemini to analyze the actual video)
+    await api('download-clips', { clips, topic: state.topic });
+
+    // Now run AI analysis
+    const scenes = state.scriptData.scenes;
+    const result = await api('analyze-clips', {
+      topic: state.topic,
+      scenes: JSON.stringify(scenes),
+    }, 180000);
+
+    state.aiMatches = result.matches || [];
+    state.aiAnalyzing = false;
+
+    // Auto-apply AI suggestions: for each scene, if AI recommends a different visual's clip,
+    // we show the recommendation but keep user's current selection (they can accept or override)
+    render();
+  } catch(e) {
+    state.aiAnalyzing = false;
+    render();
+    // Show error briefly
+    const el = document.querySelector('.ai-analyzing');
+    if (el) {
+      el.style.background = 'rgba(255, 61, 61, 0.1)';
+      el.style.borderColor = 'rgba(255, 61, 61, 0.3)';
+      el.style.color = 'var(--accent)';
+      el.innerHTML = `AI analyse mislukt: ${escHtml(e.message)}`;
+      setTimeout(() => { if (el.parentNode) el.remove(); }, 5000);
+    }
+  }
+}
+
+async function searchClips() {
+  try {
+    const scenes = state.scriptData.scenes;
+    const res = await api('search-clips', { topic: JSON.stringify(scenes), duration: 0 }, 300000);
+    // Filter out visuals with no options
+    state.visualsData = (res.visuals || []).filter(v => v.options && v.options.length > 0);
+    if (state.visualsData.length === 0) {
+      throw new Error('Geen clips gevonden. Probeer andere zoektermen in het script.');
+    }
+    render();
+  } catch(e) {
+    const m = document.getElementById('mainContent');
+    const hdr = batchHeaderHtml();
+    m.innerHTML = `
+      ${hdr}
+      <div class="error-msg">${e.message}</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=2;render()">Terug</button>
+        ${isBatchActive() ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Clips zoeken mislukt\')">Overslaan</button>' : ''}
+      </div>
+    `;
+  }
+}
+
+// ── STEP 4: Download clips ─────────────────
+async function renderStep4(m, hdr) {
+  const visuals = state.visualsData || [];
+  const clips = visuals.map((v, i) => {
+    const sel = v.selected_index || 0;
+    const opt = (v.options || [])[sel];
+    return opt ? { url: opt.url, title: opt.title, index: i } : null;
+  }).filter(Boolean);
+
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr}
+      <div class="step-header">
+        <div class="label">Stap 05</div>
+        <h2>Clips downloaden</h2>
+        <p>${clips.length} clips worden gedownload...</p>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="dlProgress" style="width:0%"></div></div>
+      <div class="download-log" id="dlLog"></div>
+      <div class="btn-row" id="dlButtons" style="display:none">
+        <button class="btn btn-ghost" onclick="state.step=3;state.clips=[];render()">Terug (opnieuw kiezen)</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="state.step=5;render()">Video samenstellen</button>
+      </div>
+    </div>
+  `;
+
+  try {
+    const res = await api('download-clips', { clips, topic: state.topic });
+    state.clips = res.clips;
+
+    document.getElementById('dlProgress').style.width = '100%';
+    const log = document.getElementById('dlLog');
+    log.innerHTML = res.clips.map(c =>
+      `<div class="log-ok">\u2713 ${escHtml(c.title)}</div>`
+    ).join('');
+    if (res.count < clips.length) {
+      log.innerHTML += `<div class="log-err">\u26A0 ${clips.length - res.count} clips mislukt</div>`;
+    }
+    document.getElementById('dlButtons').style.display = 'flex';
+  } catch(e) {
+    m.innerHTML += `<div class="error-msg">${e.message}</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=3;render()">Terug</button>
+        ${isBatchActive() ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Download mislukt\')">Overslaan</button>' : ''}
+      </div>`;
+  }
+}
+
+// ── STEP 5: Combine video ──────────────────
+async function renderStep5(m, hdr) {
+  if (state.finalVideo) {
+    showVideoPreview(m, hdr);
+    return;
+  }
+
+  m.innerHTML = hdr + spinner('Clips worden gecombineerd met voiceover...');
+  try {
+    const safeName = state.topic.toLowerCase().replace(/\s+/g, '_').slice(0, 30);
+    const res = await api('combine-video', { audio_duration: state.audioDuration, name: safeName, topic: state.topic, script: state.scriptData.script, word_timestamps: state.wordTimestamps, config: state.config });
+    state.finalVideo = res.video;
+    showVideoPreview(m, hdr);
+  } catch(e) {
+    m.innerHTML = `
+      ${hdr}
+      <div class="error-msg">${e.message}</div>
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=4;render()">Terug</button>
+        ${isBatchActive() ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Video samenstellen mislukt\')">Overslaan</button>' : ''}
+      </div>
+    `;
+  }
+}
+
+function showVideoPreview(m, hdr) {
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr || ''}
+      <div class="step-header">
+        <div class="label">Stap 06</div>
+        <h2>Video preview</h2>
+      </div>
+      <div class="video-preview">
+        <video controls src="/output/${state.finalVideo}"></video>
+      </div>
+
+      <!-- Hook Editor -->
+      <details class="settings-panel" style="margin-top:1rem">
+        <summary class="settings-toggle">Hook Preview (eerste seconden)</summary>
+        <div style="padding:1rem">
+          <div class="setting-group">
+            <label>Hook duur: <span id="hookDurLabel">3</span> seconden</label>
+            <input type="range" id="hookDurSlider" min="1" max="10" step="1" value="3"
+              oninput="document.getElementById('hookDurLabel').textContent=this.value">
+          </div>
+          <div class="btn-row" style="margin-top:0.5rem">
+            <div class="spacer"></div>
+            <button class="btn btn-ghost" onclick="renderHookPreview()">Genereer hook preview</button>
+          </div>
+          <div id="hookPreviewArea"></div>
+        </div>
+      </details>
+
+      <div class="btn-row">
+        <button class="btn btn-ghost" onclick="state.step=4;state.finalVideo=null;render()">Terug</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="state.step=6;render()">Thumbnail & metadata</button>
+      </div>
+    </div>
+  `;
+}
+
+async function renderHookPreview() {
+  const dur = parseFloat(document.getElementById('hookDurSlider').value);
+  const area = document.getElementById('hookPreviewArea');
+  area.innerHTML = spinner('Hook preview wordt gegenereerd...');
+  try {
+    const res = await api('render-hook', { video_file: state.finalVideo, duration: dur });
+    area.innerHTML = `
+      <div class="video-preview" style="margin-top:0.75rem">
+        <video controls src="/output/${res.hook_video}?t=${Date.now()}"></video>
+        <p style="color:var(--text-secondary);font-size:0.85rem;margin-top:0.5rem">Eerste ${dur} seconden van je video. Is de hook sterk genoeg?</p>
+      </div>
+    `;
+  } catch(e) {
+    area.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
+}
+
+// ── STEP 6: Thumbnail + Metadata ───────────
+async function renderStep6(m, hdr) {
+  if (!state.metadata || !state.thumbnailPath) {
+    m.innerHTML = hdr + spinner('Thumbnail & metadata worden gegenereerd...');
+
+    try {
+      if (!state.metadata) {
+        state.metadata = await api('generate-metadata', { topic: state.topic, script: state.scriptData.script });
+      }
+      if (!state.thumbnailPath) {
+        const safeName = state.topic.toLowerCase().replace(/\s+/g, '_').slice(0, 30);
+        const res = await api('generate-thumbnail', { topic: state.topic, title: state.metadata.title, name: safeName });
+        state.thumbnailPath = res.thumbnail;
+      }
+      renderStep6Form(m, hdr);
+    } catch(e) {
+      m.innerHTML = `${hdr}<div class="error-msg">${e.message}</div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" onclick="state.step=5;render()">Terug</button>
+          ${isBatchActive() ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Metadata mislukt\')">Overslaan</button>' : ''}
+        </div>`;
+    }
+    return;
+  }
+  renderStep6Form(m, hdr);
+}
+
+function renderStep6Form(m, hdr) {
+  const inBatch = isBatchActive();
+  const publishAt = inBatch ? batchState.queue[batchState.currentIndex].publishAt : '';
+
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr || ''}
+      <div class="step-header">
+        <div class="label">Stap 07</div>
+        <h2>Thumbnail & metadata</h2>
+        <p>Pas titel, beschrijving en tags aan voor optimale reach.${publishAt ? ' Gepland: ' + publishAt.replace('T', ' ').replace('Z', '') : ''}</p>
+      </div>
+      <div class="two-col">
+        <div>
+          <label>Thumbnail</label>
+          <div class="thumb-preview">
+            <img id="thumbPreviewImg" src="/output/${state.thumbnailPath}" alt="Thumbnail">
+          </div>
+          <div style="display:flex;gap:0.5rem;margin-top:0.75rem;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="regenerateThumb()">Nieuwe AI thumbnail</button>
+            <label class="btn btn-ghost btn-sm" style="cursor:pointer">Upload eigen
+              <input type="file" accept="image/*" style="display:none" onchange="uploadOwnThumb(this)">
+            </label>
+          </div>
+
+          <!-- Thumbnail Editor -->
+          <details class="settings-panel" style="margin-top:0.75rem">
+            <summary class="settings-toggle">Thumbnail bewerken</summary>
+            <div style="padding:0.75rem">
+              <div class="setting-group">
+                <label>Tekst toevoegen</label>
+                <input type="text" id="thumbText" placeholder="Overlay tekst...">
+              </div>
+              <div class="settings-grid" style="padding:0;gap:0.5rem;margin-top:0.5rem">
+                <div class="setting-group">
+                  <label>Tekstgrootte</label>
+                  <select id="thumbFontSize">
+                    <option value="40">Klein</option>
+                    <option value="60" selected>Normaal</option>
+                    <option value="80">Groot</option>
+                    <option value="100">Extra groot</option>
+                  </select>
+                </div>
+                <div class="setting-group">
+                  <label>Kleur</label>
+                  <input type="color" id="thumbTextColor" value="#FFFFFF">
+                </div>
+                <div class="setting-group">
+                  <label>Y-positie</label>
+                  <select id="thumbTextY">
+                    <option value="50">Boven</option>
+                    <option value="330">Midden</option>
+                    <option value="600" selected>Onder</option>
+                  </select>
+                </div>
+              </div>
+              <label style="display:block;margin-top:0.75rem;font-size:0.8rem;color:var(--text-secondary);font-weight:500">Filters</label>
+              <div class="settings-grid" style="padding:0;gap:0.5rem;margin-top:0.25rem">
+                <div class="setting-group">
+                  <label>Helderheid: <span id="thumbBrLabel">1.0</span></label>
+                  <input type="range" min="0.5" max="2.0" step="0.1" value="1.0" id="thumbBrightness"
+                    oninput="document.getElementById('thumbBrLabel').textContent=this.value">
+                </div>
+                <div class="setting-group">
+                  <label>Contrast: <span id="thumbCoLabel">1.0</span></label>
+                  <input type="range" min="0.5" max="2.0" step="0.1" value="1.0" id="thumbContrast"
+                    oninput="document.getElementById('thumbCoLabel').textContent=this.value">
+                </div>
+                <div class="setting-group">
+                  <label>Saturatie: <span id="thumbSaLabel">1.0</span></label>
+                  <input type="range" min="0.0" max="2.0" step="0.1" value="1.0" id="thumbSaturation"
+                    oninput="document.getElementById('thumbSaLabel').textContent=this.value">
+                </div>
+              </div>
+              <div class="btn-row" style="margin-top:0.75rem">
+                <div class="spacer"></div>
+                <button class="btn btn-primary btn-sm" onclick="applyThumbEdits()">Toepassen</button>
+              </div>
+            </div>
+          </details>
+        </div>
+        <div>
+          <label>Titel</label>
+          <input type="text" id="metaTitle" value="${escHtml(state.metadata.title)}">
+          <label style="margin-top:1rem">Beschrijving</label>
+          <textarea id="metaDesc" style="min-height:160px">${escHtml(state.metadata.description)}</textarea>
+          <label style="margin-top:1rem">Tags (komma-gescheiden)</label>
+          <input type="text" id="metaTags" value="${escHtml((state.metadata.tags || []).join(', '))}">
+        </div>
+      </div>
+      <div class="btn-row" style="margin-top:2rem">
+        <button class="btn btn-ghost" onclick="state.step=5;render()">Terug</button>
+        <div class="spacer"></div>
+        ${inBatch ? '' : `
+          <select id="privacySelect" style="width:140px">
+            <option value="private">Private</option>
+            <option value="unlisted">Unlisted</option>
+            <option value="public">Public</option>
+          </select>
+        `}
+        <button class="btn btn-primary" onclick="goUpload()">Upload naar YouTube</button>
+        ${inBatch
+          ? '<button class="btn btn-ghost" onclick="finishBatchVideoLocal()">Opslaan zonder upload</button>'
+          : `<a class="btn btn-ghost" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4">Download lokaal</a>`
+        }
+      </div>
+    </div>
+  `;
+}
+
+async function regenerateThumb() {
+  state.thumbnailPath = null;
+  const m = document.getElementById('mainContent');
+  const hdr = batchHeaderHtml();
+  m.innerHTML = hdr + spinner('Nieuwe thumbnail...');
+  try {
+    const safeName = state.topic.toLowerCase().replace(/\s+/g, '_').slice(0, 30);
+    const res = await api('generate-thumbnail', { topic: state.topic, title: state.metadata.title, name: safeName });
+    state.thumbnailPath = res.thumbnail;
+    renderStep6Form(m, hdr);
+  } catch(e) {
+    renderStep6Form(m, hdr);
+  }
+}
+
+async function uploadOwnThumb(input) {
+  if (!input.files.length) return;
+  const formData = new FormData();
+  formData.append('file', input.files[0]);
+  try {
+    const res = await fetch('/api/upload-thumbnail', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error('Upload mislukt');
+    const data = await res.json();
+    state.thumbnailPath = data.thumbnail;
+    document.getElementById('thumbPreviewImg').src = '/output/' + data.thumbnail + '?t=' + Date.now();
+  } catch(e) {
+    alert('Thumbnail upload mislukt: ' + e.message);
+  }
+}
+
+async function applyThumbEdits() {
+  const edits = {};
+
+  // Text overlay
+  const text = document.getElementById('thumbText')?.value?.trim();
+  if (text) {
+    const fontSize = parseInt(document.getElementById('thumbFontSize').value);
+    const color = document.getElementById('thumbTextColor').value;
+    const y = parseInt(document.getElementById('thumbTextY').value);
+    edits.text_overlays = [{ text, x: 640 - (text.length * fontSize * 0.3), y, font_size: fontSize, color }];
+  }
+
+  // Filters
+  const br = parseFloat(document.getElementById('thumbBrightness')?.value || 1);
+  const co = parseFloat(document.getElementById('thumbContrast')?.value || 1);
+  const sa = parseFloat(document.getElementById('thumbSaturation')?.value || 1);
+  if (br !== 1.0 || co !== 1.0 || sa !== 1.0) {
+    edits.filters = {};
+    if (br !== 1.0) edits.filters.brightness = br;
+    if (co !== 1.0) edits.filters.contrast = co;
+    if (sa !== 1.0) edits.filters.saturation = sa;
+  }
+
+  if (!edits.text_overlays && !edits.filters) return;
+
+  try {
+    const res = await api('edit-thumbnail', { base_image: state.thumbnailPath, edits });
+    state.thumbnailPath = res.thumbnail;
+    document.getElementById('thumbPreviewImg').src = '/output/' + res.thumbnail + '?t=' + Date.now();
+  } catch(e) {
+    alert('Bewerking mislukt: ' + e.message);
+  }
+}
+
+function goUpload() {
+  state.metadata.title = document.getElementById('metaTitle').value;
+  state.metadata.description = document.getElementById('metaDesc').value;
+  state.metadata.tags = document.getElementById('metaTags').value.split(',').map(t => t.trim()).filter(Boolean);
+  const privEl = document.getElementById('privacySelect');
+  state.privacy = privEl ? privEl.value : 'private';
+  state.step = 7;
+  render();
+}
+
+// ── STEP 7: Upload ─────────────────────────
+async function renderStep7(m, hdr) {
+  const inBatch = isBatchActive();
+  const publishAt = inBatch ? batchState.queue[batchState.currentIndex].publishAt : null;
+
+  m.innerHTML = hdr + spinner('Video wordt geupload naar YouTube...');
+
+  try {
+    const uploadBody = {
+      video_file: state.finalVideo,
+      title: state.metadata.title,
+      description: state.metadata.description,
+      tags: state.metadata.tags,
+      thumbnail_file: state.thumbnailPath,
+      privacy: inBatch ? 'private' : (state.privacy || 'private'),
+    };
+    if (publishAt) uploadBody.publish_at = publishAt;
+
+    const res = await api('upload', uploadBody);
+
+    if (inBatch) {
+      batchState.completed.push({
+        topic: state.topic,
+        title: state.metadata.title,
+        status: 'uploaded',
+        url: res.url,
+        videoFile: state.finalVideo,
+        publishAt: publishAt,
+      });
+
+      const isLast = batchState.currentIndex >= batchState.queue.length - 1;
+      m.innerHTML = `
+        <div class="fade-in">
+          ${hdr}
+          <div class="success-banner">
+            <h3>Video geupload!</h3>
+            <p style="margin-top:0.5rem;color:var(--text-dim);">${escHtml(state.metadata.title)}</p>
+            ${res.url ? `<p style="margin-top:0.5rem"><a href="${res.url}" target="_blank">Bekijk op YouTube \u2192</a></p>` : ''}
+          </div>
+          <div class="btn-row" style="justify-content:center;margin-top:2rem">
+            ${isLast
+              ? '<button class="btn btn-primary" onclick="finishBatch()">Bekijk alle resultaten</button>'
+              : '<button class="btn btn-primary" onclick="nextBatchVideo()">Volgende video \u2192</button>'
+            }
+          </div>
+        </div>
+      `;
+    } else {
+      m.innerHTML = `
+        <div class="fade-in">
+          <div class="success-banner">
+            <h3>Video geupload!</h3>
+            <p style="margin-top:0.75rem"><a href="${res.url}" target="_blank">Bekijk op YouTube \u2192</a></p>
+          </div>
+          <div class="btn-row" style="justify-content:center;margin-top:2rem">
+            <button class="btn btn-ghost" onclick="state.step=6;render()">Terug naar metadata</button>
+            <button class="btn btn-primary" onclick="resetPipeline()">Nieuwe video maken</button>
+          </div>
+        </div>
+      `;
+    }
+  } catch(e) {
+    if (inBatch) {
+      m.innerHTML = `
+        <div class="fade-in">
+          ${hdr}
+          <div class="error-msg">${e.message}</div>
+          <div class="btn-row" style="margin-top:1rem">
+            <button class="btn btn-ghost" onclick="state.step=6;render()">Terug</button>
+            <button class="btn btn-ghost" onclick="finishBatchVideoLocal()">Opslaan zonder upload</button>
+            <button class="btn btn-primary" onclick="state.step=7;render()">Opnieuw proberen</button>
+          </div>
+        </div>
+      `;
+    } else {
+      m.innerHTML = `
+        <div class="fade-in">
+          <div class="error-msg">${e.message}</div>
+          <p style="margin-top:1rem;color:var(--text-dim);font-size:0.85rem">
+            Heb je <code>client_secret.json</code> in de youtube-factory folder?<br>
+            Zo niet: <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Google Cloud Console \u2192 Credentials \u2192 OAuth client ID \u2192 Desktop app</a>
+          </p>
+          <div class="btn-row">
+            <button class="btn btn-ghost" onclick="state.step=6;render()">Terug</button>
+            <a class="btn btn-primary" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4">Download lokaal ipv</a>
+          </div>
+        </div>
+      `;
+    }
+  }
+}
+
+// ── Helpers ─────────────────────────────────
+function spinner(text) {
+  return `<div class="spinner-wrap"><div class="spinner"></div><div class="spinner-text">${text}</div></div>`;
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function switchTab(el, id) {
+  el.parentElement.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function resetPipeline() {
+  Object.assign(state, {
+    step: 0, topic: '', scriptData: null, audioPath: null, audioDuration: 0, wordTimestamps: null,
+    visualsData: null, aiMatches: null, aiAnalyzing: false, clips: [], finalVideo: null, thumbnailPath: null, metadata: null,
+    voiceoverSpeed: 1.0, voiceoverStability: 50, voiceoverSimilarity: 75, voiceoverStyle: 0, selectedVoiceId: '', _voiceoverGenerating: false,
+  });
+  batchState.queue = [];
+  batchState.currentIndex = -1;
+  batchState.completed = [];
+  api('reset', {}).catch(() => {});
+  render();
+}
+
+// ── Mode switching ─────────────────────────
+let currentMode = 'single';
+
+function switchMode(mode) {
+  currentMode = mode;
+  document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  const btnMap = { single: 'modeSingle', shorts: 'modeShorts', batch: 'modeBatch', tools: 'modeTools' };
+  const btn = document.getElementById(btnMap[mode]);
+  if (btn) btn.classList.add('active');
+
+  if (mode === 'shorts') {
+    // Auto-apply shorts defaults
+    Object.assign(state.config, {
+      aspect_ratio: '9:16',
+      content_type: 'shorts',
+      subtitle_style: 'large_caption',
+      subtitle_font_size: 72,
+      subtitle_position: 'center',
+      max_clip_duration: 2.0,
+    });
+    state.duration = 1;
+  } else if (mode === 'single') {
+    // Reset to standard defaults
+    Object.assign(state.config, {
+      aspect_ratio: '16:9',
+      content_type: 'standard',
+      subtitle_style: 'default',
+      subtitle_font_size: 48,
+      subtitle_position: 'bottom',
+      max_clip_duration: 3.0,
+    });
+    state.duration = 4;
+    batchState.queue = [];
+    batchState.currentIndex = -1;
+    batchState.completed = [];
+  } else {
+    batchState.queue = [];
+    batchState.currentIndex = -1;
+    batchState.completed = [];
+  }
+  state.step = 0;
+  render();
+}
+
+// ── Batch state ────────────────────────────
+const batchState = {
+  topics: ['', '', '', '', '', '', ''],
+  startDate: new Date().toISOString().split('T')[0],
+  publishTime: '09:00',
+  duration: 4,
+  queue: [],
+  currentIndex: -1,
+  completed: [],
+};
+
+const DAYS_NL = ['Zondag', 'Maandag', 'Dinsdag', 'Woensdag', 'Donderdag', 'Vrijdag', 'Zaterdag'];
+
+function calculatePublishDate(dayOffset) {
+  const base = new Date(batchState.startDate);
+  base.setDate(base.getDate() + dayOffset);
+  const dateStr = base.toISOString().split('T')[0];
+  return `${dateStr}T${batchState.publishTime}:00Z`;
+}
+
+// ── Batch form (topic entry) ───────────────
+function renderBatchForm(m) {
+  const startDate = new Date(batchState.startDate);
+
+  m.innerHTML = `
+    <div class="fade-in">
+      <div class="step-header">
+        <div class="label">Weekplanner</div>
+        <h2>7 video's voor de hele week</h2>
+        <p>Vul onderwerpen in. Je doorloopt elke video stap voor stap \u2014 script, voiceover, clips, upload.</p>
+      </div>
+
+      <div class="input-row" style="margin-bottom:1.5rem">
+        <div>
+          <label>Startdatum</label>
+          <input type="date" id="batchStartDate" value="${batchState.startDate}"
+                 onchange="batchState.startDate=this.value;renderBatchForm(document.getElementById('mainContent'))"
+                 style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:0.6rem;font-family:var(--font)">
+        </div>
+        <div>
+          <label>Publicatietijd</label>
+          <input type="time" id="batchPublishTime" value="${batchState.publishTime}"
+                 onchange="batchState.publishTime=this.value"
+                 style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:0.6rem;font-family:var(--font)">
+        </div>
+        <div>
+          <label>Duur per video</label>
+          <select id="batchDuration" onchange="batchState.duration=parseInt(this.value)"
+                  style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);padding:0.6rem;font-family:var(--font)">
+            ${Array.from({length:12},(_,i)=>i+1).map(d => `<option value="${d}" ${d === batchState.duration ? 'selected' : ''}>${d} min</option>`).join('')}
+          </select>
+        </div>
+      </div>
+
+      <div class="week-grid">
+        ${batchState.topics.map((topic, i) => {
+          const day = new Date(startDate);
+          day.setDate(day.getDate() + i);
+          const dayName = DAYS_NL[day.getDay()];
+          const dateStr = day.toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+          return `
+            <div class="day-row">
+              <div>
+                <div class="day-label">Dag ${i + 1}</div>
+                <div class="day-date">${dayName} ${dateStr}</div>
+              </div>
+              <input type="text" value="${escHtml(topic)}"
+                     placeholder="Onderwerp voor dag ${i + 1}..."
+                     onchange="batchState.topics[${i}]=this.value"
+                     style="padding:0.6rem 0.8rem;font-size:0.85rem">
+              <div></div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+
+      <div class="btn-row">
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="startBatch()">
+          Start weekplanner
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function startBatch() {
+  batchState.queue = batchState.topics
+    .map((t, i) => ({ topic: t.trim(), dayIndex: i }))
+    .filter(item => item.topic)
+    .map(item => ({
+      topic: item.topic,
+      publishAt: calculatePublishDate(item.dayIndex),
+    }));
+
+  if (batchState.queue.length === 0) return;
+
+  batchState.currentIndex = 0;
+  batchState.completed = [];
+  loadBatchVideo(0);
+}
+
+function loadBatchVideo(index) {
+  const item = batchState.queue[index];
+  Object.assign(state, {
+    step: 0,
+    topic: item.topic,
+    duration: batchState.duration,
+    scriptData: null,
+    audioPath: null,
+    audioDuration: 0,
+    wordTimestamps: null,
+    visualsData: null,
+    aiMatches: null,
+    aiAnalyzing: false,
+    clips: [],
+    finalVideo: null,
+    thumbnailPath: null,
+    metadata: null,
+  });
+  // Show spinner then auto-generate script
+  render();
+  generateScript();
+}
+
+function nextBatchVideo() {
+  batchState.currentIndex++;
+  if (batchState.currentIndex < batchState.queue.length) {
+    api('reset', {}).catch(() => {});
+    loadBatchVideo(batchState.currentIndex);
+  } else {
+    finishBatch();
+  }
+}
+
+function finishBatch() {
+  batchState.currentIndex = batchState.queue.length;
+  render();
+}
+
+function finishBatchVideoLocal() {
+  batchState.completed.push({
+    topic: state.topic,
+    title: state.metadata ? state.metadata.title : state.topic,
+    status: 'ready',
+    url: null,
+    videoFile: state.finalVideo,
+    publishAt: batchState.queue[batchState.currentIndex].publishAt,
+  });
+
+  const isLast = batchState.currentIndex >= batchState.queue.length - 1;
+  if (isLast) {
+    finishBatch();
+  } else {
+    nextBatchVideo();
+  }
+}
+
+function skipBatchVideo(reason) {
+  batchState.completed.push({
+    topic: batchState.queue[batchState.currentIndex].topic,
+    title: '',
+    status: 'error',
+    error: reason,
+    url: null,
+    videoFile: null,
+    publishAt: batchState.queue[batchState.currentIndex].publishAt,
+  });
+
+  const isLast = batchState.currentIndex >= batchState.queue.length - 1;
+  if (isLast) {
+    finishBatch();
+  } else {
+    nextBatchVideo();
+  }
+}
+
+function retryBatchVideo() {
+  loadBatchVideo(batchState.currentIndex);
+}
+
+// ── Batch results ──────────────────────────
+function renderBatchResults(m) {
+  const results = batchState.completed;
+  const ready = results.filter(r => r.status === 'ready' || r.status === 'uploaded').length;
+  const errors = results.filter(r => r.status === 'error').length;
+
+  m.innerHTML = `
+    <div class="fade-in">
+      <div class="step-header">
+        <div class="label">Weekplanner</div>
+        <h2>Alle video's voltooid</h2>
+        <p>${ready} video's klaar${errors ? `, ${errors} mislukt` : ''} van ${batchState.queue.length} totaal</p>
+      </div>
+
+      <div class="week-grid">
+        ${results.map((r, i) => `
+          <div class="day-row" style="grid-template-columns: 90px 1fr auto 100px;">
+            <div>
+              <div class="day-label">Video ${i + 1}</div>
+              <div class="day-date">${r.publishAt ? r.publishAt.split('T')[0] : ''}</div>
+            </div>
+            <div>
+              <div style="font-size:0.85rem;font-weight:500">${escHtml(r.topic)}</div>
+              ${r.title ? `<div style="font-size:0.75rem;color:var(--text-muted);margin-top:0.2rem">${escHtml(r.title)}</div>` : ''}
+              ${r.error ? `<div style="font-size:0.75rem;color:var(--accent);margin-top:0.2rem">${escHtml(r.error)}</div>` : ''}
+              ${r.url ? `<a href="${r.url}" target="_blank" style="font-size:0.75rem;color:var(--accent)">Bekijk op YouTube \u2192</a>` : ''}
+            </div>
+            <div>
+              ${r.videoFile ? `<a class="btn btn-ghost" href="/output/${r.videoFile}" download="${escHtml(r.topic)}.mp4" style="padding:0.4rem 0.8rem;font-size:0.75rem">Download</a>` : ''}
+            </div>
+            <div class="batch-status ${r.status}">
+              ${r.status === 'ready' ? 'Lokaal klaar' : r.status === 'uploaded' ? 'Geupload' : r.status === 'error' ? 'Mislukt' : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="btn-row" style="margin-top:2rem">
+        <button class="btn btn-ghost" onclick="batchState.queue=[];batchState.currentIndex=-1;batchState.completed=[];render()">Nieuwe batch</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="batchState.queue=[];batchState.currentIndex=-1;batchState.completed=[];switchMode('single')">Terug naar 1 video</button>
+      </div>
+    </div>
+  `;
+}
+
+// ── Tools Mode ──────────────────────────────
+let toolsTab = 'titles';
+
+function renderToolsMode(m) {
+  m.innerHTML = `
+    <div class="fade-in">
+      <div class="step-header">
+        <h2>Virale Tools</h2>
+        <p>AI-tools voor titels, beschrijvingen en prompt engineering.</p>
+      </div>
+      <div class="tabs">
+        <div class="tab ${toolsTab==='titles'?'active':''}" onclick="toolsTab='titles';renderToolsMode(document.getElementById('mainContent'))">Viral Titels</div>
+        <div class="tab ${toolsTab==='descriptions'?'active':''}" onclick="toolsTab='descriptions';renderToolsMode(document.getElementById('mainContent'))">Viral Beschrijvingen</div>
+        <div class="tab ${toolsTab==='niche'?'active':''}" onclick="toolsTab='niche';renderToolsMode(document.getElementById('mainContent'))">Niche Finder</div>
+        <div class="tab ${toolsTab==='copyright'?'active':''}" onclick="toolsTab='copyright';renderToolsMode(document.getElementById('mainContent'))">Copyright Check</div>
+        <div class="tab ${toolsTab==='highlights'?'active':''}" onclick="toolsTab='highlights';renderToolsMode(document.getElementById('mainContent'))">Shorts uit Video</div>
+        <div class="tab ${toolsTab==='prompts'?'active':''}" onclick="toolsTab='prompts';renderToolsMode(document.getElementById('mainContent'))">Prompt Templates</div>
+      </div>
+      <div id="toolsContent"></div>
+    </div>
+  `;
+  const tc = document.getElementById('toolsContent');
+  if (toolsTab === 'titles') renderViralTitleFinder(tc);
+  else if (toolsTab === 'descriptions') renderViralDescriptionFinder(tc);
+  else if (toolsTab === 'niche') renderNicheFinder(tc);
+  else if (toolsTab === 'copyright') renderCopyrightChecker(tc);
+  else if (toolsTab === 'highlights') renderHighlightExtractor(tc);
+  else renderPromptTemplates(tc);
+}
+
+function renderViralTitleFinder(el) {
+  el.innerHTML = `
+    <div class="setting-group" style="margin-top:1rem">
+      <label>Onderwerp</label>
+      <input type="text" id="vtTopic" placeholder="bijv. Max Verstappen comeback" value="${escHtml(state.topic)}">
+    </div>
+    <div class="setting-group">
+      <label>Script context (optioneel)</label>
+      <textarea id="vtScript" rows="3" placeholder="Plak je script of laat leeg...">${escHtml(state.scriptData?.script || '')}</textarea>
+    </div>
+    <div class="btn-row" style="margin-top:0.75rem">
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="runViralTitles()">Genereer 10 titels</button>
+    </div>
+    <div id="vtResults"></div>
+  `;
+}
+
+async function runViralTitles() {
+  const topic = document.getElementById('vtTopic').value.trim();
+  if (!topic) return;
+  const script = document.getElementById('vtScript')?.value || '';
+  const r = document.getElementById('vtResults');
+  r.innerHTML = spinner('Virale titels worden gegenereerd...');
+  try {
+    const data = await api('viral-titles', { topic, script });
+    const titles = data.titles || [];
+    r.innerHTML = '<div class="results-list">' + titles.sort((a,b) => b.score - a.score).map(t => `
+      <div class="result-card" onclick="navigator.clipboard.writeText('${escHtml(t.title)}');this.style.borderColor='var(--red)'">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>${escHtml(t.title)}</strong>
+          <span class="score-badge">${t.score}/10</span>
+        </div>
+        <small style="color:var(--text-secondary)">${escHtml(t.reasoning)}</small>
+      </div>
+    `).join('') + '</div>';
+  } catch(e) {
+    r.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
+}
+
+function renderViralDescriptionFinder(el) {
+  el.innerHTML = `
+    <div class="setting-group" style="margin-top:1rem">
+      <label>Onderwerp</label>
+      <input type="text" id="vdTopic" placeholder="bijv. AI revolution 2026" value="${escHtml(state.topic)}">
+    </div>
+    <div class="setting-group">
+      <label>Script context (optioneel)</label>
+      <textarea id="vdScript" rows="3" placeholder="Plak je script of laat leeg...">${escHtml(state.scriptData?.script || '')}</textarea>
+    </div>
+    <div class="btn-row" style="margin-top:0.75rem">
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="runViralDescriptions()">Genereer beschrijvingen</button>
+    </div>
+    <div id="vdResults"></div>
+  `;
+}
+
+async function runViralDescriptions() {
+  const topic = document.getElementById('vdTopic').value.trim();
+  if (!topic) return;
+  const script = document.getElementById('vdScript')?.value || '';
+  const r = document.getElementById('vdResults');
+  r.innerHTML = spinner('Beschrijvingen worden gegenereerd...');
+  try {
+    const data = await api('viral-descriptions', { topic, script });
+    const descs = data.descriptions || [];
+    r.innerHTML = '<div class="results-list">' + descs.sort((a,b) => b.score - a.score).map(d => `
+      <div class="result-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem">
+          <span class="score-badge">${d.score}/10</span>
+          <small style="color:var(--text-secondary)">${escHtml(d.focus)}</small>
+          <button class="btn btn-ghost btn-sm" onclick="navigator.clipboard.writeText(this.closest('.result-card').querySelector('pre').textContent)">Kopieer</button>
+        </div>
+        <pre style="white-space:pre-wrap;font-size:0.8rem;max-height:200px;overflow-y:auto">${escHtml(d.description)}</pre>
+      </div>
+    `).join('') + '</div>';
+  } catch(e) {
+    r.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
+}
+
+function renderPromptTemplates(el) {
+  el.innerHTML = spinner('Templates laden...');
+  api('prompt-templates').then(data => {
+    const templates = data.templates || [];
+    const categories = [...new Set(templates.map(t => t.category))];
+    el.innerHTML = categories.map(cat => `
+      <div style="margin-top:1rem">
+        <h3 style="text-transform:capitalize;margin-bottom:0.5rem">${cat === 'script' ? 'Script Templates' : cat === 'thumbnail' ? 'Thumbnail Templates' : 'Hook Templates'}</h3>
+        <div class="results-list">
+          ${templates.filter(t => t.category === cat).map(t => `
+            <div class="result-card" onclick="navigator.clipboard.writeText('${escHtml(t.template).replace(/'/g, "\\'")}');this.style.borderColor='var(--red)'">
+              <strong>${escHtml(t.name)}</strong>
+              <p style="color:var(--text-secondary);font-size:0.85rem;margin-top:0.25rem">${escHtml(t.template)}</p>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  }).catch(e => {
+    el.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  });
+}
+
+function renderNicheFinder(el) {
+  el.innerHTML = `
+    <div class="setting-group" style="margin-top:1rem">
+      <label>Onderwerp / Niche</label>
+      <input type="text" id="nicheTopic" placeholder="bijv. F1 racing, true crime, AI tutorials">
+    </div>
+    <div class="btn-row" style="margin-top:0.75rem">
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="runNicheAnalysis()">Analyseer niche</button>
+    </div>
+    <div id="nicheResults"></div>
+  `;
+}
+
+async function runNicheAnalysis() {
+  const topic = document.getElementById('nicheTopic').value.trim();
+  if (!topic) return;
+  const r = document.getElementById('nicheResults');
+  r.innerHTML = spinner('Niche wordt geanalyseerd...');
+  try {
+    const data = await api('analyze-niche', { topic }, 60000);
+    const scoreColor = data.score >= 7 ? '#22c55e' : data.score >= 4 ? '#eab308' : '#ef4444';
+    r.innerHTML = `
+      <div class="result-card" style="margin-top:1rem">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem">
+          <h3>${escHtml(data.topic)}</h3>
+          <span style="background:${scoreColor};color:white;padding:4px 12px;border-radius:12px;font-weight:700;font-size:1.1rem">${data.score}/10</span>
+        </div>
+        <div class="settings-grid" style="padding:0;gap:0.75rem">
+          <div><strong>Volume:</strong> ${escHtml(data.volume_estimate)}</div>
+          <div><strong>Competitie:</strong> ${escHtml(data.competition)}</div>
+          <div><strong>Trending:</strong> ${data.trending ? 'Ja' : 'Nee'}</div>
+        </div>
+        ${data.top_channels?.length ? `<div style="margin-top:0.75rem"><strong>Top kanalen:</strong> ${data.top_channels.map(c => escHtml(c)).join(', ')}</div>` : ''}
+        <div style="margin-top:0.75rem">
+          <strong>Aanbevelingen:</strong>
+          <ul style="margin-top:0.25rem;padding-left:1.2rem">${(data.recommendations || []).map(r => `<li>${escHtml(r)}</li>`).join('')}</ul>
+        </div>
+      </div>
+    `;
+  } catch(e) {
+    r.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
+}
+
+function renderCopyrightChecker(el) {
+  el.innerHTML = `
+    <div class="setting-group" style="margin-top:1rem">
+      <label>YouTube Video URL</label>
+      <input type="text" id="copyrightUrl" placeholder="https://www.youtube.com/watch?v=...">
+    </div>
+    <div class="btn-row" style="margin-top:0.75rem">
+      <div class="spacer"></div>
+      <button class="btn btn-primary" onclick="runCopyrightCheck()">Check copyright</button>
+    </div>
+    <div id="copyrightResults"></div>
+  `;
+}
+
+async function runCopyrightCheck() {
+  const url = document.getElementById('copyrightUrl').value.trim();
+  if (!url) return;
+  const r = document.getElementById('copyrightResults');
+  r.innerHTML = spinner('Copyright wordt gecheckt...');
+  try {
+    const data = await api('check-copyright', { url });
+    const colors = { low: '#22c55e', medium: '#eab308', high: '#ef4444' };
+    const labels = { low: 'Laag risico', medium: 'Gemiddeld risico', high: 'Hoog risico' };
+    r.innerHTML = `
+      <div class="result-card" style="margin-top:1rem">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Risico-niveau</strong>
+          <span style="background:${colors[data.risk_level]};color:white;padding:4px 12px;border-radius:12px;font-weight:600">${labels[data.risk_level]}</span>
+        </div>
+        <div style="margin-top:0.5rem"><strong>Licentie:</strong> ${escHtml(data.license)}</div>
+        ${data.channel ? `<div><strong>Kanaal:</strong> ${escHtml(data.channel)}</div>` : ''}
+        ${data.warnings?.length ? `
+          <div style="margin-top:0.5rem">
+            <strong>Waarschuwingen:</strong>
+            <ul style="padding-left:1.2rem;margin-top:0.25rem">${data.warnings.map(w => `<li style="color:var(--text-secondary)">${escHtml(w)}</li>`).join('')}</ul>
+          </div>
+        ` : '<div style="margin-top:0.5rem;color:#22c55e">Geen waarschuwingen gevonden.</div>'}
+      </div>
+    `;
+  } catch(e) {
+    r.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
+}
+
+function renderHighlightExtractor(el) {
+  el.innerHTML = `
+    <div style="margin-top:1rem">
+      <p style="color:var(--text-secondary);margin-bottom:0.75rem">Upload een lange video en AI vindt de beste momenten voor shorts.</p>
+      <div class="setting-group">
+        <label>Video uploaden</label>
+        <input type="file" id="hlVideoFile" accept="video/*">
+      </div>
+      <div class="setting-group">
+        <label>Aantal highlights</label>
+        <select id="hlCount">
+          <option value="3">3</option>
+          <option value="5" selected>5</option>
+          <option value="8">8</option>
+          <option value="10">10</option>
+        </select>
+      </div>
+      <div class="btn-row" style="margin-top:0.75rem">
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="runHighlightExtraction()">Zoek highlights</button>
+      </div>
+      <div id="hlResults"></div>
+    </div>
+  `;
+}
+
+async function runHighlightExtraction() {
+  const fileInput = document.getElementById('hlVideoFile');
+  if (!fileInput.files.length) return;
+  const count = document.getElementById('hlCount').value;
+  const r = document.getElementById('hlResults');
+  r.innerHTML = spinner('Video wordt geanalyseerd... dit kan even duren.');
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  formData.append('count', count);
+
+  try {
+    const res = await fetch('/api/extract-highlights', { method: 'POST', body: formData });
+    if (!res.ok) throw new Error((await res.json()).detail || 'Fout');
+    const data = await res.json();
+    const highlights = data.highlights || [];
+    r.innerHTML = '<div class="results-list">' + highlights.map((h, i) => `
+      <div class="result-card">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <strong>Highlight ${i+1}</strong>
+          <small>${h.start.toFixed(1)}s - ${h.end.toFixed(1)}s</small>
+        </div>
+        <p style="color:var(--text-secondary);font-size:0.85rem">${escHtml(h.description)}</p>
+        ${h.clip_path ? `<video controls src="/output/highlight_${String(i).padStart(3,'0')}.mp4" style="max-width:100%;margin-top:0.5rem;border-radius:8px"></video>` : ''}
+      </div>
+    `).join('') + '</div>';
+  } catch(e) {
+    r.innerHTML = '<div class="error-msg">' + e.message + '</div>';
+  }
+}
+
+// ── Init ───────────────────────────────────
+if (isLoggedIn()) {
+  showApp();
+  renderApiStatus();
+  render();
+} else {
+  showLogin();
+}
+</script>
+</body>
+</html>
