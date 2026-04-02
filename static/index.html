@@ -18,8 +18,10 @@
   --border: #2a2a3a;
   --border-light: #3a3a4e;
   --text: #e8e8f0;
-  --text-dim: #8888a0;
-  --text-muted: #55556a;
+  --text-dim: #b0b0c8;
+  --text-muted: #8080a0;
+  --text-secondary: #b0b0c8;
+  --text-primary: #e8e8f0;
   --accent: #ff3d3d;
   --accent-glow: rgba(255, 61, 61, 0.25);
   --green: #2dd4a0;
@@ -39,13 +41,13 @@ body {
   overflow-x: hidden;
 }
 
-/* ── Grain overlay ────────────────────────── */
-body::after {
+/* ── Grain overlay (decorative, behind content for a11y) ── */
+body::before {
   content: '';
   position: fixed; inset: 0;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
   pointer-events: none;
-  z-index: 9999;
+  z-index: -1;
 }
 
 /* ── Layout ───────────────────────────────── */
@@ -160,7 +162,7 @@ body::after {
 .step-header .label {
   font-family: var(--mono);
   font-size: 0.7rem;
-  color: var(--accent);
+  color: #ff9090;
   text-transform: uppercase;
   letter-spacing: 0.15em;
   margin-bottom: 0.4rem;
@@ -191,6 +193,7 @@ input[type="text"], textarea, select {
   outline: none;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
+::placeholder { color: #a8a8c0; opacity: 1; }
 input:focus, textarea:focus, select:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-glow);
@@ -231,16 +234,17 @@ label {
   text-decoration: none;
 }
 .btn:disabled {
-  opacity: 0.4;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 .btn-primary {
-  background: var(--accent);
+  background: #d42020;
   color: white;
+  font-weight: 600;
   box-shadow: 0 0 20px var(--accent-glow);
 }
 .btn-primary:hover:not(:disabled) {
-  background: #ff5252;
+  background: #e03030;
   box-shadow: 0 0 30px var(--accent-glow);
   transform: translateY(-1px);
 }
@@ -252,9 +256,9 @@ label {
 .btn-ghost:hover { border-color: var(--border-light); color: var(--text); }
 /* Settings panel */
 .settings-panel { margin-top: 1rem; border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
-.settings-toggle { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; color: var(--text-secondary); transition: color 0.2s; }
-.settings-toggle:hover { color: var(--text-primary); }
-.settings-panel[open] .settings-toggle { color: var(--text-primary); border-bottom: 1px solid var(--border); }
+.settings-toggle { padding: 0.75rem 1rem; cursor: pointer; font-weight: 600; color: var(--text-dim); transition: color 0.2s; }
+.settings-toggle:hover { color: var(--text); }
+.settings-panel[open] .settings-toggle { color: var(--text); border-bottom: 1px solid var(--border); }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; padding: 1rem; }
 .setting-group label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 0.35rem; font-weight: 500; }
 .setting-group select, .setting-group input[type="range"] { width: 100%; }
@@ -596,8 +600,9 @@ label {
   transition: all 0.2s;
 }
 .mode-btn.active {
-  background: var(--accent);
+  background: #d42020;
   color: white;
+  font-weight: 600;
   box-shadow: 0 0 10px var(--accent-glow);
 }
 
@@ -713,11 +718,11 @@ label {
     <p style="color:var(--text-secondary);margin-bottom:1.5rem">Log in om verder te gaan</p>
     <div class="setting-group">
       <label>Email</label>
-      <input type="email" id="loginEmail" placeholder="je@email.com" onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()">
+      <input type="email" id="loginEmail" aria-label="E-mailadres" placeholder="je@email.com" onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()">
     </div>
     <div class="setting-group" style="margin-top:0.75rem">
       <label>Wachtwoord</label>
-      <input type="password" id="loginPassword" placeholder="Wachtwoord" onkeydown="if(event.key==='Enter')doLogin()">
+      <input type="password" id="loginPassword" aria-label="Wachtwoord" placeholder="Wachtwoord" onkeydown="if(event.key==='Enter')doLogin()">
     </div>
     <div id="loginError" style="color:#ef4444;font-size:0.85rem;margin-top:0.5rem"></div>
     <button class="btn btn-primary" style="width:100%;margin-top:1rem" onclick="doLogin()">Inloggen</button>
@@ -993,8 +998,8 @@ function renderStep0(m) {
         }</p>
       </div>
       <div class="input-row">
-        <input type="text" id="topicInput" placeholder="bijv. Carlos Alcaraz, Lionel Messi, Max Verstappen..." value="${escHtml(state.topic)}">
-        <select id="durationSelect">
+        <input type="text" id="topicInput" aria-label="Onderwerp" placeholder="bijv. Carlos Alcaraz, Lionel Messi, Max Verstappen..." value="${escHtml(state.topic)}">
+        <select id="durationSelect" aria-label="Videoduur in minuten">
           ${currentMode === 'shorts'
             ? [0.25, 0.5, 1].map(d => `<option value="${d}" ${d === state.duration ? 'selected' : ''}>${d < 1 ? Math.round(d*60) + ' sec' : d + ' min'}</option>`).join('')
             : Array.from({length:12},(_,i)=>i+1).map(d => `<option value="${d}" ${d === state.duration ? 'selected' : ''}>${d} min</option>`).join('')

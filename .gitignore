@@ -10,3 +10,8 @@ token.json
 .DS_Store
 videoforge/
 node_modules/
+e2e-tests/fixtures/.sessions/
+test-results/
+playwright-report/
+.playwright-cli/
+node_modules/
