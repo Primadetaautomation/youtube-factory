@@ -77,33 +77,51 @@ def download_clip(
     dest = clips_dir or TEMP_DIR
     output_path = dest / f"clip_{clip_index:03d}.mp4"
 
-    try:
-        # Remove stale file to avoid yt-dlp skipping download
+    def _find_output():
+        """Check if output file exists, also check alternative extensions."""
+        if output_path.exists():
+            return output_path
+        for alt in dest.glob(f"clip_{clip_index:03d}.*"):
+            if alt.suffix in (".mp4", ".mkv", ".webm"):
+                alt.rename(output_path)
+                return output_path
+        return None
+
+    def _run_download(extra_args=None):
+        # Remove stale file
         if output_path.exists():
             output_path.unlink()
 
-        result = subprocess.run(
-            [
-                "yt-dlp",
-                video_url,
-                "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]",
-                "--merge-output-format", "mp4",
-                "--download-sections", f"*0-{max_duration}",
-                "--output", str(output_path),
-                "--force-overwrites",
-                "--quiet",
-                "--no-warnings",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        cmd = [
+            "yt-dlp",
+            video_url,
+            "--format", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "--merge-output-format", "mp4",
+            "--output", str(output_path),
+            "--force-overwrites",
+            "--quiet",
+            "--no-warnings",
+        ]
+        if extra_args:
+            cmd.extend(extra_args)
 
-        if output_path.exists():
-            return output_path
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
-        stderr = result.stderr.strip() if result.stderr else ""
-        print(f"  Download failed for clip {clip_index} (exit {result.returncode}): {stderr}")
+    try:
+        # Attempt 1: with --download-sections for speed
+        _run_download(["--download-sections", f"*0-{max_duration}"])
+        found = _find_output()
+        if found:
+            return found
+
+        # Attempt 2: without --download-sections (some videos don't support it)
+        print(f"  Retrying clip {clip_index} without --download-sections...")
+        _run_download()
+        found = _find_output()
+        if found:
+            return found
+
+        print(f"  Download failed for clip {clip_index}: {video_url}")
 
     except subprocess.TimeoutExpired:
         print(f"  Download timed out for clip {clip_index}: {video_url}")
