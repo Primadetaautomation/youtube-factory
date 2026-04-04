@@ -1,8 +1,11 @@
 """Find and download video clips from YouTube using yt-dlp."""
+import logging
 import subprocess
 import json
 from pathlib import Path
 from config import TEMP_DIR, MAX_CLIP_DURATION
+
+logger = logging.getLogger(__name__)
 
 
 def search_youtube(query: str, max_results: int = 5) -> list[dict]:
@@ -99,13 +102,23 @@ def download_clip(
             "--merge-output-format", "mp4",
             "--output", str(output_path),
             "--force-overwrites",
-            "--quiet",
-            "--no-warnings",
         ]
         if extra_args:
             cmd.extend(extra_args)
 
-        return subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        logger.info(f"Clip {clip_index}: running yt-dlp for {video_url}")
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+
+        if result.returncode != 0:
+            stderr = result.stderr.strip() if result.stderr else "(no stderr)"
+            stdout = result.stdout.strip() if result.stdout else ""
+            logger.error(f"Clip {clip_index} yt-dlp failed (exit {result.returncode}): {stderr}")
+            if stdout:
+                logger.error(f"Clip {clip_index} stdout: {stdout[-500:]}")
+        else:
+            logger.info(f"Clip {clip_index}: yt-dlp succeeded")
+
+        return result
 
     try:
         # Attempt 1: with --download-sections for speed
@@ -115,18 +128,18 @@ def download_clip(
             return found
 
         # Attempt 2: without --download-sections (some videos don't support it)
-        print(f"  Retrying clip {clip_index} without --download-sections...")
+        logger.warning(f"Clip {clip_index}: retrying without --download-sections...")
         _run_download()
         found = _find_output()
         if found:
             return found
 
-        print(f"  Download failed for clip {clip_index}: {video_url}")
+        logger.error(f"Clip {clip_index}: all download attempts failed for {video_url}")
 
     except subprocess.TimeoutExpired:
-        print(f"  Download timed out for clip {clip_index}: {video_url}")
+        logger.error(f"Clip {clip_index}: download timed out for {video_url}")
     except Exception as e:
-        print(f"  Error downloading clip {clip_index}: {e}")
+        logger.error(f"Clip {clip_index}: unexpected error: {e}")
 
     return None
 

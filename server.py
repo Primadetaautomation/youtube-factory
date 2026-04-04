@@ -1,7 +1,10 @@
 """YouTube Factory — FastAPI backend."""
 import asyncio
+import logging
 import sys, json, shutil
 from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 sys.path.insert(0, str(Path(__file__).parent))
 

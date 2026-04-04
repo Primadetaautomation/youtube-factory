@@ -22,4 +22,4 @@ RUN mkdir -p output temp
 
 EXPOSE 3333
 
-CMD ["python", "server.py"]
+CMD ["sh", "-c", "yt-dlp -U 2>/dev/null; python server.py"]
