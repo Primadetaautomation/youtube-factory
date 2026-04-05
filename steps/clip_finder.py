@@ -17,7 +17,8 @@ def _ytdlp_extra_args() -> list[str]:
       YTDLP_COOKIES_FILE=/app/cookies.txt
       YTDLP_USER_AGENT=Mozilla/5.0 ...
     """
-    args: list[str] = []
+    # Always enable EJS challenge solver (needed for YouTube JS signatures)
+    args: list[str] = ["--remote-components", "ejs:github"]
     proxy = os.getenv("YTDLP_PROXY", "").strip()
     if proxy:
         args.extend(["--proxy", proxy])
