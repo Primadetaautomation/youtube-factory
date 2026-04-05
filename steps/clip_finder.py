@@ -1,5 +1,6 @@
 """Find and download video clips from YouTube using yt-dlp."""
 import logging
+import os
 import subprocess
 import json
 from pathlib import Path
@@ -8,26 +9,43 @@ from config import TEMP_DIR, MAX_CLIP_DURATION
 logger = logging.getLogger(__name__)
 
 
+def _ytdlp_extra_args() -> list[str]:
+    """Extra yt-dlp flags from env (proxy, cookies, user-agent).
+
+    Set these in Railway / .env to bypass YouTube IP blocks:
+      YTDLP_PROXY=http://user:pass@proxy.example.com:8080
+      YTDLP_COOKIES_FILE=/app/cookies.txt
+      YTDLP_USER_AGENT=Mozilla/5.0 ...
+    """
+    args: list[str] = []
+    proxy = os.getenv("YTDLP_PROXY", "").strip()
+    if proxy:
+        args.extend(["--proxy", proxy])
+    cookies = os.getenv("YTDLP_COOKIES_FILE", "").strip()
+    if cookies and Path(cookies).exists():
+        args.extend(["--cookies", cookies])
+    user_agent = os.getenv("YTDLP_USER_AGENT", "").strip()
+    if user_agent:
+        args.extend(["--user-agent", user_agent])
+    return args
+
+
 def search_youtube(query: str, max_results: int = 5) -> list[dict]:
     """Search YouTube via yt-dlp (no API key needed)."""
     try:
-        result = subprocess.run(
-            [
-                "yt-dlp",
-                f"ytsearch{max_results}:{query}",
-                "--dump-json",
-                "--flat-playlist",
-                "--quiet",
-                "--no-warnings",
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
+        cmd = [
+            "yt-dlp",
+            f"ytsearch{max_results}:{query}",
+            "--dump-json",
+            "--flat-playlist",
+            "--quiet",
+            "--no-warnings",
+        ] + _ytdlp_extra_args()
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
 
         if result.returncode != 0:
             stderr = result.stderr.strip() if result.stderr else ""
-            print(f"  yt-dlp search failed (exit {result.returncode}): {stderr}")
+            logger.error(f"yt-dlp search failed (exit {result.returncode}): {stderr}")
             return []
 
         stdout = result.stdout.strip()
@@ -102,7 +120,7 @@ def download_clip(
             "--merge-output-format", "mp4",
             "--output", str(output_path),
             "--force-overwrites",
-        ]
+        ] + _ytdlp_extra_args()
         if extra_args:
             cmd.extend(extra_args)
 
