@@ -45,7 +45,7 @@ def search_youtube(query: str, max_results: int = 5) -> list[dict]:
 
         if result.returncode != 0:
             stderr = result.stderr.strip() if result.stderr else ""
-            logger.error(f"yt-dlp search failed (exit {result.returncode}): {stderr}")
+            print(f"[SEARCH] yt-dlp search failed (exit {result.returncode}): {stderr}")
             return []
 
         stdout = result.stdout.strip()
@@ -124,17 +124,17 @@ def download_clip(
         if extra_args:
             cmd.extend(extra_args)
 
-        logger.info(f"Clip {clip_index}: running yt-dlp for {video_url}")
+        print(f"[DOWNLOAD] Clip {clip_index}: running yt-dlp for {video_url}")
         result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
         if result.returncode != 0:
             stderr = result.stderr.strip() if result.stderr else "(no stderr)"
             stdout = result.stdout.strip() if result.stdout else ""
-            logger.error(f"Clip {clip_index} yt-dlp failed (exit {result.returncode}): {stderr}")
+            print(f"[DOWNLOAD] Clip {clip_index} yt-dlp failed (exit {result.returncode}): {stderr}")
             if stdout:
-                logger.error(f"Clip {clip_index} stdout: {stdout[-500:]}")
+                print(f"[DOWNLOAD] Clip {clip_index} stdout: {stdout[-500:]}")
         else:
-            logger.info(f"Clip {clip_index}: yt-dlp succeeded")
+            print(f"[DOWNLOAD] Clip {clip_index}: yt-dlp succeeded")
 
         return result
 
@@ -146,18 +146,18 @@ def download_clip(
             return found
 
         # Attempt 2: without --download-sections (some videos don't support it)
-        logger.warning(f"Clip {clip_index}: retrying without --download-sections...")
+        print(f"[DOWNLOAD] Clip {clip_index}: retrying without --download-sections...")
         _run_download()
         found = _find_output()
         if found:
             return found
 
-        logger.error(f"Clip {clip_index}: all download attempts failed for {video_url}")
+        print(f"[DOWNLOAD] Clip {clip_index}: all download attempts failed for {video_url}")
 
     except subprocess.TimeoutExpired:
-        logger.error(f"Clip {clip_index}: download timed out for {video_url}")
+        print(f"[DOWNLOAD] Clip {clip_index}: download timed out for {video_url}")
     except Exception as e:
-        logger.error(f"Clip {clip_index}: unexpected error: {e}")
+        print(f"[DOWNLOAD] Clip {clip_index}: unexpected error: {e}")
 
     return None
 
