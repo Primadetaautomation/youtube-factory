@@ -138,19 +138,34 @@ def download_clip(
 
         return result
 
+    import time
+    import random
+
+    def _attempt_with_retry(extra_args, label: str) -> bool:
+        """Run yt-dlp with retry on 429 (rate limit)."""
+        for attempt in range(3):
+            result = _run_download(extra_args)
+            if _find_output():
+                return True
+            stderr = (result.stderr or "") + (result.stdout or "")
+            if "429" in stderr or "Too Many Requests" in stderr:
+                wait = 5 * (attempt + 1) + random.uniform(0, 3)
+                print(f"[DOWNLOAD] Clip {clip_index}: 429 rate limit on {label}, waiting {wait:.1f}s...")
+                time.sleep(wait)
+                continue
+            # Non-429 error: give up on this attempt type
+            return False
+        return False
+
     try:
         # Attempt 1: with --download-sections for speed
-        _run_download(["--download-sections", f"*0-{max_duration}"])
-        found = _find_output()
-        if found:
-            return found
+        if _attempt_with_retry(["--download-sections", f"*0-{max_duration}"], "sections"):
+            return _find_output()
 
         # Attempt 2: without --download-sections (some videos don't support it)
         print(f"[DOWNLOAD] Clip {clip_index}: retrying without --download-sections...")
-        _run_download()
-        found = _find_output()
-        if found:
-            return found
+        if _attempt_with_retry(None, "full"):
+            return _find_output()
 
         print(f"[DOWNLOAD] Clip {clip_index}: all download attempts failed for {video_url}")
 

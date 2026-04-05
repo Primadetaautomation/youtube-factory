@@ -262,8 +262,8 @@ async def download_clips_endpoint(req: DownloadRequest):
             return None
 
         downloaded = []
-        # 4 parallel downloads: balances speed with proxy rate limits
-        with ThreadPoolExecutor(max_workers=4) as pool:
+        # 2 parallel downloads: YouTube rate-limits (429) with higher concurrency
+        with ThreadPoolExecutor(max_workers=2) as pool:
             futures = [pool.submit(_one, c) for c in req.clips]
             for fut in as_completed(futures):
                 result = fut.result()
