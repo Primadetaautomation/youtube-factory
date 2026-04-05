@@ -1601,7 +1601,7 @@ async function runAiMatch() {
     }).filter(Boolean);
 
     // Download clips first (needed for Gemini to analyze the actual video)
-    await api('download-clips', { clips, topic: state.topic });
+    await api('download-clips', { clips, topic: state.topic }, 600000);
 
     // Now run AI analysis
     const scenes = state.scriptData.scenes;
@@ -1683,7 +1683,7 @@ async function renderStep4(m, hdr) {
   `;
 
   try {
-    const res = await api('download-clips', { clips, topic: state.topic });
+    const res = await api('download-clips', { clips, topic: state.topic }, 600000);
     state.clips = res.clips;
 
     document.getElementById('dlProgress').style.width = '100%';

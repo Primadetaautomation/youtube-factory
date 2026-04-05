@@ -249,15 +249,29 @@ async def download_clips_endpoint(req: DownloadRequest):
         clips_dir = TEMP_DIR
 
     def _download_all():
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         # Clean old clips
         for f in clips_dir.glob("clip_*.mp4"):
             f.unlink()
 
-        downloaded = []
-        for clip in req.clips:
+        def _one(clip):
             path = download_clip(clip.url, clip.index, clips_dir=clips_dir)
             if path:
-                downloaded.append({"index": clip.index, "file": path.name, "title": clip.title})
+                return {"index": clip.index, "file": path.name, "title": clip.title}
+            return None
+
+        downloaded = []
+        # 4 parallel downloads: balances speed with proxy rate limits
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            futures = [pool.submit(_one, c) for c in req.clips]
+            for fut in as_completed(futures):
+                result = fut.result()
+                if result:
+                    downloaded.append(result)
+
+        # Sort by index to keep order stable
+        downloaded.sort(key=lambda x: x["index"])
         return downloaded
 
     # Run synchronous yt-dlp downloads in a thread to avoid blocking the event loop
