@@ -136,7 +136,7 @@ input:focus{outline:none;border-color:var(--accent)}
     <span class="step-num">2</span>
     <div>
       <p>Plak dit commando <span class="badge badge-auto">1 keer</span></p>
-      <div class="cmd-block" id="installCmd" onclick="copyInstall()">git clone https://github.com/Primadetaautomation/youtube-factory.git ~/youtube-factory && cd ~/youtube-factory && bash install.sh</div>
+      <div class="cmd-block" id="installCmd" onclick="copyInstall()">if [ -d ~/youtube-factory ]; then cd ~/youtube-factory && git pull; else git clone https://github.com/Primadetaautomation/youtube-factory.git ~/youtube-factory && cd ~/youtube-factory; fi && bash install.sh</div>
       <button class="btn btn-primary" onclick="copyInstall()" style="margin-top:0.5rem;font-size:0.9rem;padding:0.6rem 1rem">Kopieer commando</button>
       <p class="dim" id="copyStatus" style="margin-top:0.35rem"></p>
     </div>
