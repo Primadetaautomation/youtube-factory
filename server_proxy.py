@@ -41,7 +41,7 @@ app.add_middleware(
 
 
 # ── Auth middleware ────────────────────────────
-AUTH_EXEMPT = {"/api/auth/login", "/api/proxy/status", "/health"}
+AUTH_EXEMPT = {"/api/auth/login", "/api/proxy/status", "/health", "/download/mac", "/download/windows"}
 
 
 class AuthMiddleware(BaseHTTPMiddleware):
