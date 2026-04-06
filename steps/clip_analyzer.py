@@ -7,7 +7,7 @@ from google import genai
 from config import GEMINI_API_KEY
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL = "gemini-3.1-pro-preview"
+MODEL = "gemini-2.5-pro"
 
 # Simple in-memory cache: clip_path -> analysis result
 _analysis_cache: dict[str, dict] = {}
