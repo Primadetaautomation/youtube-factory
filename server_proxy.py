@@ -124,30 +124,38 @@ input:focus{outline:none;border-color:var(--accent)}
 <div class="download-content" id="downloadContent">
   <p style="color:var(--green);margin-bottom:0.25rem;font-weight:600;font-size:0.9rem">Ingelogd!</p>
   <p style="color:var(--text-dim);margin-bottom:1.5rem;font-size:0.9rem">Download het bestand voor jouw systeem en dubbelklik erop.</p>
-  <div class="download-grid">
-    <a class="btn btn-primary" href="/download/mac" download="YouTube Factory Installer.command">
-      <span class="icon">&#63743;</span> Download voor Mac
-    </a>
-    <p style="color:var(--text-dim);font-size:0.75rem;margin-top:-0.25rem;text-align:center">Mac blokkeert onbekende bestanden. <strong>Rechtermuisklik</strong> op het bestand &rarr; <strong>Open</strong> &rarr; <strong>Open</strong></p>
-    <a class="btn btn-secondary" href="/download/windows" download="YouTube Factory Installer.bat">
-      <span class="icon">&#8862;</span> Download voor Windows
-    </a>
-  </div>
-  <div class="divider">Hoe werkt het?</div>
+  <div class="divider">Eenmalige installatie</div>
   <div class="step">
     <span class="step-num">1</span>
-    <div><p>Dubbelklik op het gedownloade bestand</p><p class="dim">Alles wordt automatisch geinstalleerd <span class="badge badge-auto">automatisch</span></p></div>
+    <div>
+      <p>Open <strong>Terminal</strong></p>
+      <p class="dim">Druk <kbd style="background:var(--surface);border:1px solid var(--border);padding:0.1rem 0.4rem;border-radius:4px;font-size:0.8rem">Cmd+Spatie</kbd>, typ <strong>Terminal</strong>, druk Enter</p>
+    </div>
   </div>
   <div class="step">
     <span class="step-num">2</span>
-    <div><p>De app opent in je browser</p><p class="dim">Op <strong>localhost:3333</strong> — werkt altijd, ook zonder internet</p></div>
+    <div>
+      <p>Plak dit commando <span class="badge badge-auto">1 keer</span></p>
+      <div class="cmd-block" id="installCmd" onclick="copyInstall()">git clone https://github.com/Primadetaautomation/youtube-factory.git ~/youtube-factory && cd ~/youtube-factory && bash install.sh</div>
+      <button class="btn btn-primary" onclick="copyInstall()" style="margin-top:0.5rem;font-size:0.9rem;padding:0.6rem 1rem">Kopieer commando</button>
+      <p class="dim" id="copyStatus" style="margin-top:0.35rem"></p>
+    </div>
   </div>
   <div class="step">
     <span class="step-num">3</span>
-    <div><p>Log in en maak video's</p><p class="dim">Gebruik dezelfde login als hier. Je video's worden op je PC opgeslagen.</p></div>
+    <div><p>Klaar! De app opent automatisch in je browser</p><p class="dim">Op <strong>localhost:3333</strong> — log in met dezelfde gegevens als hier</p></div>
   </div>
-  <div class="divider">De volgende keer</div>
-  <p style="color:var(--text-dim);font-size:0.85rem;text-align:center">Dubbelklik op <strong>YouTube Factory.command</strong> (Mac) of <strong>start.bat</strong> (Windows) in je youtube-factory map.</p>
+  <div class="divider">De volgende keer starten</div>
+  <div class="step" style="border-color:var(--accent);border-style:dashed">
+    <span class="step-num" style="background:var(--green)">&#10003;</span>
+    <div>
+      <p>Open Terminal en plak:</p>
+      <div class="cmd-block" onclick="copyStart()">cd ~/youtube-factory && bash start.sh</div>
+      <button class="btn btn-secondary" onclick="copyStart()" style="margin-top:0.5rem;font-size:0.85rem;padding:0.5rem 0.85rem">Kopieer start commando</button>
+    </div>
+  </div>
+  <div class="divider">Windows?</div>
+  <p style="color:var(--text-dim);font-size:0.85rem;text-align:center">Open PowerShell en plak hetzelfde installatie-commando hierboven. Of <a href="/download/windows" style="color:var(--accent)">download install.bat</a>.</p>
 </div>
 </div></div>
 <script>
@@ -162,6 +170,15 @@ async function doLogin(){
     document.getElementById('loginForm').classList.remove('active');
     document.getElementById('downloadContent').classList.add('active');
   }catch(e){errEl.textContent=e.message;errEl.style.display='block'}
+}
+function copyInstall(){
+  const cmd=document.getElementById('installCmd').textContent.trim();
+  navigator.clipboard.writeText(cmd);
+  document.getElementById('copyStatus').textContent='Gekopieerd! Plak in Terminal met Cmd+V';
+  document.getElementById('copyStatus').style.color='var(--green)';
+}
+function copyStart(){
+  navigator.clipboard.writeText('cd ~/youtube-factory && bash start.sh');
 }
 </script>
 </body></html>"""
