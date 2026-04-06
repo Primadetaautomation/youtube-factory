@@ -128,6 +128,7 @@ input:focus{outline:none;border-color:var(--accent)}
     <a class="btn btn-primary" href="/download/mac" download="YouTube Factory Installer.command">
       <span class="icon">&#63743;</span> Download voor Mac
     </a>
+    <p style="color:var(--text-dim);font-size:0.75rem;margin-top:-0.25rem;text-align:center">Mac blokkeert onbekende bestanden. <strong>Rechtermuisklik</strong> op het bestand &rarr; <strong>Open</strong> &rarr; <strong>Open</strong></p>
     <a class="btn btn-secondary" href="/download/windows" download="YouTube Factory Installer.bat">
       <span class="icon">&#8862;</span> Download voor Windows
     </a>
