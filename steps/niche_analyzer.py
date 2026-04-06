@@ -1,9 +1,12 @@
 """Analyze topic niche potential using YouTube search data + AI analysis."""
 
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY
+from google import genai
+from config import GEMINI_API_KEY
 from steps.clip_finder import search_youtube
+
+_client = genai.Client(api_key=GEMINI_API_KEY)
+_MODEL = "gemini-2.0-flash"
 
 
 def analyze_niche(topic: str, search_count: int = 10) -> dict:
@@ -17,8 +20,6 @@ def analyze_niche(topic: str, search_count: int = 10) -> dict:
 
     titles = [r.get("title", "") for r in results]
     channels = [r.get("channel", "") for r in results]
-
-    client = OpenAI(api_key=OPENAI_API_KEY)
 
     prompt = f"""Analyze this YouTube niche/topic for a content creator: "{topic}"
 
@@ -43,16 +44,19 @@ Return JSON:
     "recommendations": ["recommendation 1", "recommendation 2"],
     "top_channels": ["channel1", "channel2"]
 }}
+Return ONLY valid JSON, no markdown.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.7,
-    )
+    response = _client.models.generate_content(model=_MODEL, contents=[prompt])
+    text = response.text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    if text.startswith("json"):
+        text = text[4:].strip()
 
-    analysis = json.loads(response.choices[0].message.content)
+    analysis = json.loads(text)
     analysis["topic"] = topic
     analysis["search_results_count"] = len(results)
 

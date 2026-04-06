@@ -225,9 +225,8 @@ async def health():
 # ── Status ──────────────────────────────────────────────
 @app.get("/api/proxy/status")
 async def status_endpoint():
-    from config import OPENAI_API_KEY, ELEVENLABS_API_KEY, GEMINI_API_KEY
+    from config import ELEVENLABS_API_KEY, GEMINI_API_KEY
     return {
-        "openai": bool(OPENAI_API_KEY),
         "elevenlabs": bool(ELEVENLABS_API_KEY),
         "gemini": bool(GEMINI_API_KEY),
     }
@@ -464,11 +463,11 @@ class NicheRequest(BaseModel):
 @app.post("/api/proxy/analyze-niche")
 async def analyze_niche_endpoint(req: NicheRequest):
     """Analyze niche potential. Local app provides yt-dlp search data."""
-    from openai import OpenAI
-    from config import OPENAI_API_KEY
+    from google import genai
+    from config import GEMINI_API_KEY
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
+        client = genai.Client(api_key=GEMINI_API_KEY)
 
         prompt = f"""Analyze this YouTube niche/topic for a content creator: "{req.topic}"
 
@@ -493,15 +492,18 @@ Return JSON:
     "recommendations": ["recommendation 1", "recommendation 2"],
     "top_channels": ["channel1", "channel2"]
 }}
+Return ONLY valid JSON, no markdown.
 """
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
-            temperature=0.7,
-        )
+        response = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt])
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3].strip()
+        if text.startswith("json"):
+            text = text[4:].strip()
 
-        analysis = json.loads(response.choices[0].message.content)
+        analysis = json.loads(text)
         analysis["topic"] = req.topic
         analysis["search_results_count"] = len(req.titles)
         return analysis

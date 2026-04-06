@@ -1,13 +1,26 @@
-"""Generate YouTube title, description, and tags using OpenAI."""
+"""Generate YouTube title, description, and tags using Gemini."""
 import json
-from openai import OpenAI
-from config import OPENAI_API_KEY
+from google import genai
+from config import GEMINI_API_KEY
+
+client = genai.Client(api_key=GEMINI_API_KEY)
+MODEL = "gemini-2.0-flash"
+
+
+def _parse_json(text: str) -> dict:
+    """Strip markdown fences and parse JSON."""
+    text = text.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    if text.startswith("json"):
+        text = text[4:].strip()
+    return json.loads(text)
 
 
 def generate_metadata(topic: str, script_text: str) -> dict:
     """Generate optimized YouTube title, description, and tags."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
     prompt = f"""Generate YouTube metadata for a video about: {topic}
 
 Script summary: {script_text[:500]}
@@ -21,22 +34,15 @@ Return JSON:
 
 Make the title clickable but not clickbait. Use proven YouTube title formulas.
 Description should include relevant keywords for SEO.
+Return ONLY valid JSON, no markdown.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.8,
-    )
-
-    return json.loads(response.choices[0].message.content)
+    response = client.models.generate_content(model=MODEL, contents=[prompt])
+    return _parse_json(response.text)
 
 
 def generate_viral_titles(topic: str, script_text: str, count: int = 10) -> dict:
     """Generate multiple viral title options with virality scoring."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
     prompt = f"""Generate {count} viral YouTube title options for a video about: {topic}
 
 Script summary: {script_text[:500]}
@@ -54,22 +60,15 @@ Return JSON:
         {{"title": "...", "score": 9.2, "reasoning": "..."}}
     ]
 }}
+Return ONLY valid JSON, no markdown.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.9,
-    )
-
-    return json.loads(response.choices[0].message.content)
+    response = client.models.generate_content(model=MODEL, contents=[prompt])
+    return _parse_json(response.text)
 
 
 def generate_viral_descriptions(topic: str, script_text: str, count: int = 5) -> dict:
     """Generate multiple SEO-optimized description options with scoring."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
     prompt = f"""Generate {count} YouTube description variants for a video about: {topic}
 
 Script summary: {script_text[:500]}
@@ -85,13 +84,8 @@ Return JSON:
         {{"description": "...", "score": 8.5, "focus": "..."}}
     ]
 }}
+Return ONLY valid JSON, no markdown.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.8,
-    )
-
-    return json.loads(response.choices[0].message.content)
+    response = client.models.generate_content(model=MODEL, contents=[prompt])
+    return _parse_json(response.text)

@@ -3,8 +3,11 @@
 import json
 import subprocess
 from pathlib import Path
-from openai import OpenAI
-from config import OPENAI_API_KEY, OUTPUT_DIR
+from google import genai
+from config import GEMINI_API_KEY, OUTPUT_DIR
+
+_client = genai.Client(api_key=GEMINI_API_KEY)
+_MODEL = "gemini-2.0-flash"
 
 
 def extract_highlights(
@@ -77,9 +80,7 @@ def _select_highlights(
     scene_times: list[float],
     target_count: int,
 ) -> list[dict]:
-    """Use GPT-4o to select the best highlights from scene timestamps."""
-    client = OpenAI(api_key=OPENAI_API_KEY)
-
+    """Use Gemini to select the best highlights from scene timestamps."""
     prompt = f"""Given these scene change timestamps (in seconds) from a video:
 {json.dumps(scene_times[:50])}
 
@@ -92,17 +93,22 @@ Return JSON:
         {{"start": 10.0, "end": 15.0, "description": "Brief description of likely content"}}
     ]
 }}
+Return ONLY valid JSON, no markdown.
 """
 
-    response = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.7,
-    )
-
-    data = json.loads(response.choices[0].message.content)
-    return data.get("highlights", [])
+    try:
+        response = _client.models.generate_content(model=_MODEL, contents=[prompt])
+        text = response.text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3].strip()
+        if text.startswith("json"):
+            text = text[4:].strip()
+        data = json.loads(text)
+        return data.get("highlights", [])
+    except Exception:
+        return []
 
 
 def _extract_clip(
