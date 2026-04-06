@@ -6,7 +6,7 @@ from config import GEMINI_API_KEY
 from steps.clip_finder import search_youtube
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
-_MODEL = "gemini-2.5-pro"
+_MODEL = "gemini-3.1-pro-preview"
 
 
 def analyze_niche(topic: str, search_count: int = 10) -> dict:

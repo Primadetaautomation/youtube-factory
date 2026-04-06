@@ -7,7 +7,7 @@ from google import genai
 from config import GEMINI_API_KEY, OUTPUT_DIR
 
 _client = genai.Client(api_key=GEMINI_API_KEY)
-_MODEL = "gemini-2.5-pro"
+_MODEL = "gemini-3.1-pro-preview"
 
 
 def extract_highlights(
