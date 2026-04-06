@@ -85,59 +85,68 @@ DOWNLOAD_PAGE_HTML = """<!DOCTYPE html>
 :root{--bg:#0a0a0f;--surface:#12121a;--border:#1e1e2e;--text:#e4e4e7;--text-dim:#71717a;--accent:#7c3aed;--accent-hover:#6d28d9;--green:#22c55e}
 *{box-sizing:border-box;margin:0;padding:0}
 body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
-.container{max-width:640px;width:100%;padding:2rem}
+.container{max-width:580px;width:100%;padding:2rem}
 .card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2.5rem}
-h1{font-size:1.75rem;margin-bottom:0.5rem}
-.subtitle{color:var(--text-dim);margin-bottom:2rem}
+h1{font-size:1.75rem;margin-bottom:0.25rem}
+.subtitle{color:var(--text-dim);margin-bottom:2rem;font-size:0.95rem}
 .login-form{display:none}.login-form.active{display:block}
 .download-content{display:none}.download-content.active{display:block}
 .form-group{margin-bottom:1rem}
 label{display:block;font-size:0.85rem;color:var(--text-dim);margin-bottom:0.35rem}
 input{width:100%;padding:0.65rem 0.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.95rem}
 input:focus{outline:none;border-color:var(--accent)}
-.btn{display:inline-block;padding:0.7rem 1.5rem;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer;border:none;text-decoration:none;text-align:center;transition:all 0.2s}
-.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:var(--accent-hover)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:0.5rem;padding:0.85rem 1.5rem;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;border:none;text-decoration:none;text-align:center;transition:all 0.2s;width:100%}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:var(--accent-hover);transform:translateY(-1px)}
+.btn-secondary{background:transparent;border:1px solid var(--border);color:var(--text)}.btn-secondary:hover{border-color:var(--accent);background:rgba(124,58,237,0.08)}
 .btn-block{width:100%}
 .error-msg{background:#2d1215;color:#fca5a5;padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;display:none}
-.os-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem}
-.os-card h3{font-size:1rem;margin-bottom:0.5rem}
-.os-card p{color:var(--text-dim);font-size:0.85rem;margin-bottom:0.75rem}
-code{background:var(--surface);border:1px solid var(--border);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.85rem}
-.cmd-block{background:#1a1a2e;border:1px solid var(--border);border-radius:8px;padding:0.85rem 1rem;font-family:monospace;font-size:0.85rem;color:var(--green);margin:0.5rem 0;cursor:pointer;position:relative;user-select:all}
-.cmd-block:hover::after{content:'Klik om te kopieren';position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);font-size:0.7rem;color:var(--text-dim);font-family:-apple-system,sans-serif}
-.step-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:white;font-size:0.75rem;font-weight:700;margin-right:0.5rem}
-.steps-list{list-style:none}.steps-list li{display:flex;align-items:flex-start;margin-bottom:1rem}.steps-list li>div{flex:1}
+.download-grid{display:flex;flex-direction:column;gap:0.75rem;margin-bottom:1.5rem}
+.divider{display:flex;align-items:center;gap:1rem;margin:1.5rem 0;color:var(--text-dim);font-size:0.8rem}
+.divider::before,.divider::after{content:'';flex:1;border-top:1px solid var(--border)}
+.step{display:flex;gap:0.75rem;align-items:flex-start;margin-bottom:1rem;padding:0.75rem;background:var(--bg);border-radius:8px;border:1px solid var(--border)}
+.step-num{min-width:28px;height:28px;border-radius:50%;background:var(--accent);color:white;display:flex;align-items:center;justify-content:center;font-size:0.8rem;font-weight:700}
+.step p{margin:0;font-size:0.9rem;line-height:1.4}.step p.dim{color:var(--text-dim);font-size:0.8rem;margin-top:0.25rem}
+.icon{font-size:1.2rem}
+.badge{display:inline-block;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.7rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px}
+.badge-auto{background:rgba(34,197,94,0.15);color:var(--green)}
 </style>
 </head>
 <body>
 <div class="container"><div class="card">
 <h1>YouTube Factory</h1>
-<p class="subtitle">Download de app en maak video's op je eigen PC.</p>
+<p class="subtitle">Maak AI-video's op je eigen PC. Download, dubbelklik, klaar.</p>
 <div class="login-form active" id="loginForm">
   <div class="error-msg" id="loginError"></div>
   <div class="form-group"><label>Email</label><input type="email" id="email" placeholder="je@email.com"></div>
   <div class="form-group"><label>Wachtwoord</label><input type="password" id="password" placeholder="Wachtwoord" onkeydown="if(event.key==='Enter')doLogin()"></div>
-  <button class="btn btn-primary btn-block" onclick="doLogin()" style="margin-top:1rem">Inloggen</button>
+  <button class="btn btn-primary" onclick="doLogin()" style="margin-top:1rem">Inloggen</button>
 </div>
 <div class="download-content" id="downloadContent">
-  <p style="color:var(--green);margin-bottom:1.5rem;font-weight:600">Ingelogd! Installeer de app hieronder.</p>
-  <div class="os-card">
-    <h3>Mac / Linux</h3>
-    <p>Open Terminal en plak:</p>
-    <div class="cmd-block" onclick="copyCmd(this)">git clone https://github.com/Primadetaautomation/youtube-factory.git ~/youtube-factory && cd ~/youtube-factory && bash install.sh</div>
+  <p style="color:var(--green);margin-bottom:0.25rem;font-weight:600;font-size:0.9rem">Ingelogd!</p>
+  <p style="color:var(--text-dim);margin-bottom:1.5rem;font-size:0.9rem">Download het bestand voor jouw systeem en dubbelklik erop.</p>
+  <div class="download-grid">
+    <a class="btn btn-primary" href="/download/mac" download="YouTube Factory Installer.command">
+      <span class="icon">&#63743;</span> Download voor Mac
+    </a>
+    <a class="btn btn-secondary" href="/download/windows" download="YouTube Factory Installer.bat">
+      <span class="icon">&#8862;</span> Download voor Windows
+    </a>
   </div>
-  <div class="os-card">
-    <h3>Windows</h3>
-    <p>Open PowerShell en plak:</p>
-    <div class="cmd-block" onclick="copyCmd(this)">git clone https://github.com/Primadetaautomation/youtube-factory.git %USERPROFILE%\\youtube-factory && cd %USERPROFILE%\\youtube-factory && install.bat</div>
+  <div class="divider">Hoe werkt het?</div>
+  <div class="step">
+    <span class="step-num">1</span>
+    <div><p>Dubbelklik op het gedownloade bestand</p><p class="dim">Alles wordt automatisch geinstalleerd <span class="badge badge-auto">automatisch</span></p></div>
   </div>
-  <hr style="border:none;border-top:1px solid var(--border);margin:1.5rem 0">
-  <h3 style="margin-bottom:1rem">Na installatie</h3>
-  <ul class="steps-list">
-    <li><span class="step-num">1</span><div>Open Terminal en draai:<br><div class="cmd-block" onclick="copyCmd(this)">cd ~/youtube-factory && ./start.sh</div></div></li>
-    <li><span class="step-num">2</span><div>De app opent automatisch in je browser op <code>localhost:3333</code></div></li>
-    <li><span class="step-num">3</span><div>Log in met dezelfde gegevens als hier en ga aan de slag!</div></li>
-  </ul>
+  <div class="step">
+    <span class="step-num">2</span>
+    <div><p>De app opent in je browser</p><p class="dim">Op <strong>localhost:3333</strong> — werkt altijd, ook zonder internet</p></div>
+  </div>
+  <div class="step">
+    <span class="step-num">3</span>
+    <div><p>Log in en maak video's</p><p class="dim">Gebruik dezelfde login als hier. Je video's worden op je PC opgeslagen.</p></div>
+  </div>
+  <div class="divider">De volgende keer</div>
+  <p style="color:var(--text-dim);font-size:0.85rem;text-align:center">Dubbelklik op <strong>YouTube Factory.command</strong> (Mac) of <strong>start.bat</strong> (Windows) in je youtube-factory map.</p>
 </div>
 </div></div>
 <script>
@@ -153,7 +162,6 @@ async function doLogin(){
     document.getElementById('downloadContent').classList.add('active');
   }catch(e){errEl.textContent=e.message;errEl.style.display='block'}
 }
-function copyCmd(el){navigator.clipboard.writeText(el.textContent.trim());el.style.borderColor='var(--green)';setTimeout(()=>el.style.borderColor='',1000)}
 </script>
 </body></html>"""
 
@@ -161,6 +169,34 @@ function copyCmd(el){navigator.clipboard.writeText(el.textContent.trim());el.sty
 @app.get("/", response_class=HTMLResponse)
 async def download_page():
     return DOWNLOAD_PAGE_HTML
+
+
+@app.get("/download/mac")
+async def download_mac():
+    """Serve the Mac .command installer as a download."""
+    from fastapi.responses import Response
+    installer_path = Path(__file__).parent / "YouTube Factory Installer.command"
+    if not installer_path.exists():
+        raise HTTPException(status_code=404, detail="Installer niet gevonden")
+    return Response(
+        content=installer_path.read_bytes(),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="YouTube Factory Installer.command"'},
+    )
+
+
+@app.get("/download/windows")
+async def download_windows():
+    """Serve the Windows .bat installer as a download."""
+    from fastapi.responses import Response
+    installer_path = Path(__file__).parent / "install.bat"
+    if not installer_path.exists():
+        raise HTTPException(status_code=404, detail="Installer niet gevonden")
+    return Response(
+        content=installer_path.read_bytes(),
+        media_type="application/octet-stream",
+        headers={"Content-Disposition": 'attachment; filename="YouTube Factory Installer.bat"'},
+    )
 
 
 @app.get("/health")
