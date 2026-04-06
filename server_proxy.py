@@ -26,8 +26,7 @@ from steps.pipeline_config import PipelineConfig
 
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import HTMLResponse
 
 app = FastAPI(title="YouTube Factory Proxy")
 
@@ -39,11 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Serve static files (download page, installer scripts)
-STATIC_DIR = Path(__file__).parent / "static"
-STATIC_DIR.mkdir(exist_ok=True)
-app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 
 # ── Auth middleware ────────────────────────────
@@ -82,9 +76,91 @@ async def login_endpoint(req: LoginRequest):
     raise HTTPException(status_code=401, detail="Ongeldige inloggegevens")
 
 
-@app.get("/")
+DOWNLOAD_PAGE_HTML = """<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>YouTube Factory — Download</title>
+<style>
+:root{--bg:#0a0a0f;--surface:#12121a;--border:#1e1e2e;--text:#e4e4e7;--text-dim:#71717a;--accent:#7c3aed;--accent-hover:#6d28d9;--green:#22c55e}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center}
+.container{max-width:640px;width:100%;padding:2rem}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:2.5rem}
+h1{font-size:1.75rem;margin-bottom:0.5rem}
+.subtitle{color:var(--text-dim);margin-bottom:2rem}
+.login-form{display:none}.login-form.active{display:block}
+.download-content{display:none}.download-content.active{display:block}
+.form-group{margin-bottom:1rem}
+label{display:block;font-size:0.85rem;color:var(--text-dim);margin-bottom:0.35rem}
+input{width:100%;padding:0.65rem 0.85rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:0.95rem}
+input:focus{outline:none;border-color:var(--accent)}
+.btn{display:inline-block;padding:0.7rem 1.5rem;border-radius:8px;font-size:0.95rem;font-weight:600;cursor:pointer;border:none;text-decoration:none;text-align:center;transition:all 0.2s}
+.btn-primary{background:var(--accent);color:white}.btn-primary:hover{background:var(--accent-hover)}
+.btn-block{width:100%}
+.error-msg{background:#2d1215;color:#fca5a5;padding:0.75rem 1rem;border-radius:8px;margin-bottom:1rem;display:none}
+.os-card{background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:1.25rem;margin-bottom:1rem}
+.os-card h3{font-size:1rem;margin-bottom:0.5rem}
+.os-card p{color:var(--text-dim);font-size:0.85rem;margin-bottom:0.75rem}
+code{background:var(--surface);border:1px solid var(--border);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.85rem}
+.cmd-block{background:#1a1a2e;border:1px solid var(--border);border-radius:8px;padding:0.85rem 1rem;font-family:monospace;font-size:0.85rem;color:var(--green);margin:0.5rem 0;cursor:pointer;position:relative;user-select:all}
+.cmd-block:hover::after{content:'Klik om te kopieren';position:absolute;right:0.75rem;top:50%;transform:translateY(-50%);font-size:0.7rem;color:var(--text-dim);font-family:-apple-system,sans-serif}
+.step-num{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:var(--accent);color:white;font-size:0.75rem;font-weight:700;margin-right:0.5rem}
+.steps-list{list-style:none}.steps-list li{display:flex;align-items:flex-start;margin-bottom:1rem}.steps-list li>div{flex:1}
+</style>
+</head>
+<body>
+<div class="container"><div class="card">
+<h1>YouTube Factory</h1>
+<p class="subtitle">Download de app en maak video's op je eigen PC.</p>
+<div class="login-form active" id="loginForm">
+  <div class="error-msg" id="loginError"></div>
+  <div class="form-group"><label>Email</label><input type="email" id="email" placeholder="je@email.com"></div>
+  <div class="form-group"><label>Wachtwoord</label><input type="password" id="password" placeholder="Wachtwoord" onkeydown="if(event.key==='Enter')doLogin()"></div>
+  <button class="btn btn-primary btn-block" onclick="doLogin()" style="margin-top:1rem">Inloggen</button>
+</div>
+<div class="download-content" id="downloadContent">
+  <p style="color:var(--green);margin-bottom:1.5rem;font-weight:600">Ingelogd! Installeer de app hieronder.</p>
+  <div class="os-card">
+    <h3>Mac / Linux</h3>
+    <p>Open Terminal en plak:</p>
+    <div class="cmd-block" onclick="copyCmd(this)">git clone https://github.com/Primadetaautomation/youtube-factory.git ~/youtube-factory && cd ~/youtube-factory && bash install.sh</div>
+  </div>
+  <div class="os-card">
+    <h3>Windows</h3>
+    <p>Open PowerShell en plak:</p>
+    <div class="cmd-block" onclick="copyCmd(this)">git clone https://github.com/Primadetaautomation/youtube-factory.git %USERPROFILE%\\youtube-factory && cd %USERPROFILE%\\youtube-factory && install.bat</div>
+  </div>
+  <hr style="border:none;border-top:1px solid var(--border);margin:1.5rem 0">
+  <h3 style="margin-bottom:1rem">Na installatie</h3>
+  <ul class="steps-list">
+    <li><span class="step-num">1</span><div>Open Terminal en draai:<br><div class="cmd-block" onclick="copyCmd(this)">cd ~/youtube-factory && ./start.sh</div></div></li>
+    <li><span class="step-num">2</span><div>De app opent automatisch in je browser op <code>localhost:3333</code></div></li>
+    <li><span class="step-num">3</span><div>Log in met dezelfde gegevens als hier en ga aan de slag!</div></li>
+  </ul>
+</div>
+</div></div>
+<script>
+async function doLogin(){
+  const email=document.getElementById('email').value;
+  const password=document.getElementById('password').value;
+  const errEl=document.getElementById('loginError');
+  errEl.style.display='none';
+  try{
+    const res=await fetch('/api/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,password})});
+    if(!res.ok){const data=await res.json();throw new Error(data.detail||'Login mislukt')}
+    document.getElementById('loginForm').classList.remove('active');
+    document.getElementById('downloadContent').classList.add('active');
+  }catch(e){errEl.textContent=e.message;errEl.style.display='block'}
+}
+function copyCmd(el){navigator.clipboard.writeText(el.textContent.trim());el.style.borderColor='var(--green)';setTimeout(()=>el.style.borderColor='',1000)}
+</script>
+</body></html>"""
+
+
+@app.get("/", response_class=HTMLResponse)
 async def download_page():
-    return FileResponse(str(STATIC_DIR / "download.html"))
+    return DOWNLOAD_PAGE_HTML
 
 
 @app.get("/health")
