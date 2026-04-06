@@ -175,7 +175,7 @@ async def download_page():
 async def download_mac():
     """Serve the Mac .command installer as a download."""
     from fastapi.responses import Response
-    installer_path = Path(__file__).parent / "YouTube Factory Installer.command"
+    installer_path = Path(__file__).parent / "install-mac.command"
     if not installer_path.exists():
         raise HTTPException(status_code=404, detail="Installer niet gevonden")
     return Response(
