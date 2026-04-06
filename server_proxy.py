@@ -494,7 +494,7 @@ Return JSON:
 }}
 Return ONLY valid JSON, no markdown.
 """
-        response = client.models.generate_content(model="gemini-2.0-flash", contents=[prompt])
+        response = client.models.generate_content(model="gemini-3.1-pro", contents=[prompt])
         text = response.text.strip()
         if text.startswith("```"):
             text = text.split("\n", 1)[1] if "\n" in text else text[3:]

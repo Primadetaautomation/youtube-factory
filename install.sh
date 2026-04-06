@@ -70,6 +70,21 @@ else
     fi
 fi
 
+# ── Check & install Deno (needed by yt-dlp) ───
+echo "→ Deno controleren..."
+if command -v deno &> /dev/null; then
+    echo "  ✓ Deno gevonden"
+else
+    echo "  Deno installeren (nodig voor YouTube downloads)..."
+    if [ "$PLATFORM" = "mac" ]; then
+        brew install deno
+    elif [ "$PLATFORM" = "linux" ]; then
+        curl -fsSL https://deno.land/install.sh | sh
+        export PATH="$HOME/.deno/bin:$PATH"
+    fi
+    echo "  ✓ Deno geinstalleerd"
+fi
+
 # ── Check FFmpeg ──────────────────────────────
 echo "→ FFmpeg controleren..."
 if command -v ffmpeg &> /dev/null; then

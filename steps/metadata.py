@@ -4,7 +4,7 @@ from google import genai
 from config import GEMINI_API_KEY
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-3.1-pro"
 
 
 def _parse_json(text: str) -> dict:

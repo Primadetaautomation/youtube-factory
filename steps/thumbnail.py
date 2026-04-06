@@ -27,7 +27,7 @@ def generate_thumbnail(topic: str, title: str, output_name: str = "thumbnail", *
     )
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model="gemini-3.1-flash-image-preview",
         contents=[prompt],
         config=types.GenerateContentConfig(
             response_modalities=["TEXT", "IMAGE"],
@@ -104,7 +104,7 @@ def generate_thumbnail_nanobanana(
     contents.append(full_prompt)
 
     response = client.models.generate_content(
-        model="gemini-2.0-flash-exp",
+        model="gemini-3.1-flash-image-preview",
         contents=contents,
         config=types.GenerateContentConfig(
             response_modalities=["TEXT", "IMAGE"],

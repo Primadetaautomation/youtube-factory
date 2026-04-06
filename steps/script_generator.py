@@ -6,7 +6,7 @@ from steps.pipeline_config import PipelineConfig
 from steps.style_registry import get_prompt_modifier
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-MODEL = "gemini-2.0-flash"
+MODEL = "gemini-3.1-pro"
 
 
 def generate_script(topic: str, duration_minutes: int = 4, *, config=None) -> dict:
