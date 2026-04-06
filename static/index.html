@@ -899,7 +899,7 @@ async function renderApiStatus() {
   try {
     const s = await api('status');
     const el = document.getElementById('apiStatus');
-    el.innerHTML = ['openai', 'elevenlabs', 'youtube'].map(k =>
+    el.innerHTML = ['gemini', 'elevenlabs'].map(k =>
       `<div class="api-badge"><span class="api-dot ${s[k] ? 'ok' : 'err'}"></span>${k}</div>`
     ).join('');
   } catch(e) {}
