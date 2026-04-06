@@ -804,7 +804,7 @@ const STEPS = [
   'Clips downloaden',
   'Video samenstellen',
   'Thumbnail & metadata',
-  'Uploaden',
+  'Klaar',
 ];
 
 // ── Auth ──────────────────────────────────
@@ -1904,18 +1904,8 @@ function renderStep6Form(m, hdr) {
       <div class="btn-row" style="margin-top:2rem">
         <button class="btn btn-ghost" onclick="state.step=5;render()">Terug</button>
         <div class="spacer"></div>
-        ${inBatch ? '' : `
-          <select id="privacySelect" style="width:140px">
-            <option value="private">Private</option>
-            <option value="unlisted">Unlisted</option>
-            <option value="public">Public</option>
-          </select>
-        `}
-        <button class="btn btn-primary" onclick="goUpload()">Upload naar YouTube</button>
-        ${inBatch
-          ? '<button class="btn btn-ghost" onclick="finishBatchVideoLocal()">Opslaan zonder upload</button>'
-          : `<a class="btn btn-ghost" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4">Download lokaal</a>`
-        }
+        <button class="btn btn-primary" onclick="goFinish()">Afronden</button>
+        <a class="btn btn-ghost" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4">Download video</a>
       </div>
     </div>
   `;
@@ -1985,105 +1975,58 @@ async function applyThumbEdits() {
   }
 }
 
-function goUpload() {
+function goFinish() {
   state.metadata.title = document.getElementById('metaTitle').value;
   state.metadata.description = document.getElementById('metaDesc').value;
   state.metadata.tags = document.getElementById('metaTags').value.split(',').map(t => t.trim()).filter(Boolean);
-  const privEl = document.getElementById('privacySelect');
-  state.privacy = privEl ? privEl.value : 'private';
   state.step = 7;
   render();
 }
 
-// ── STEP 7: Upload ─────────────────────────
+// ── STEP 7: Klaar ──────────────────────────
 async function renderStep7(m, hdr) {
   const inBatch = isBatchActive();
-  const publishAt = inBatch ? batchState.queue[batchState.currentIndex].publishAt : null;
 
-  m.innerHTML = hdr + spinner('Video wordt geupload naar YouTube...');
-
-  try {
-    const uploadBody = {
-      video_file: state.finalVideo,
+  if (inBatch) {
+    batchState.completed.push({
+      topic: state.topic,
       title: state.metadata.title,
-      description: state.metadata.description,
-      tags: state.metadata.tags,
-      thumbnail_file: state.thumbnailPath,
-      privacy: inBatch ? 'private' : (state.privacy || 'private'),
-    };
-    if (publishAt) uploadBody.publish_at = publishAt;
+      status: 'ready',
+      videoFile: state.finalVideo,
+    });
 
-    const res = await api('upload', uploadBody);
-
-    if (inBatch) {
-      batchState.completed.push({
-        topic: state.topic,
-        title: state.metadata.title,
-        status: 'uploaded',
-        url: res.url,
-        videoFile: state.finalVideo,
-        publishAt: publishAt,
-      });
-
-      const isLast = batchState.currentIndex >= batchState.queue.length - 1;
-      m.innerHTML = `
-        <div class="fade-in">
-          ${hdr}
-          <div class="success-banner">
-            <h3>Video geupload!</h3>
-            <p style="margin-top:0.5rem;color:var(--text-dim);">${escHtml(state.metadata.title)}</p>
-            ${res.url ? `<p style="margin-top:0.5rem"><a href="${res.url}" target="_blank">Bekijk op YouTube \u2192</a></p>` : ''}
-          </div>
-          <div class="btn-row" style="justify-content:center;margin-top:2rem">
-            ${isLast
-              ? '<button class="btn btn-primary" onclick="finishBatch()">Bekijk alle resultaten</button>'
-              : '<button class="btn btn-primary" onclick="nextBatchVideo()">Volgende video \u2192</button>'
-            }
-          </div>
+    const isLast = batchState.currentIndex >= batchState.queue.length - 1;
+    m.innerHTML = `
+      <div class="fade-in">
+        ${hdr}
+        <div class="success-banner">
+          <h3>Video klaar!</h3>
+          <p style="margin-top:0.5rem;color:var(--text-dim);">${escHtml(state.metadata.title)}</p>
+          <a class="btn btn-ghost" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4" style="margin-top:0.75rem">Download video</a>
         </div>
-      `;
-    } else {
-      m.innerHTML = `
-        <div class="fade-in">
-          <div class="success-banner">
-            <h3>Video geupload!</h3>
-            <p style="margin-top:0.75rem"><a href="${res.url}" target="_blank">Bekijk op YouTube \u2192</a></p>
-          </div>
-          <div class="btn-row" style="justify-content:center;margin-top:2rem">
-            <button class="btn btn-ghost" onclick="state.step=6;render()">Terug naar metadata</button>
-            <button class="btn btn-primary" onclick="resetPipeline()">Nieuwe video maken</button>
-          </div>
+        <div class="btn-row" style="justify-content:center;margin-top:2rem">
+          ${isLast
+            ? '<button class="btn btn-primary" onclick="finishBatch()">Bekijk alle resultaten</button>'
+            : '<button class="btn btn-primary" onclick="nextBatchVideo()">Volgende video \u2192</button>'
+          }
         </div>
-      `;
-    }
-  } catch(e) {
-    if (inBatch) {
-      m.innerHTML = `
-        <div class="fade-in">
-          ${hdr}
-          <div class="error-msg">${e.message}</div>
-          <div class="btn-row" style="margin-top:1rem">
-            <button class="btn btn-ghost" onclick="state.step=6;render()">Terug</button>
-            <button class="btn btn-ghost" onclick="finishBatchVideoLocal()">Opslaan zonder upload</button>
-            <button class="btn btn-primary" onclick="state.step=7;render()">Opnieuw proberen</button>
-          </div>
+      </div>
+    `;
+  } else {
+    m.innerHTML = `
+      <div class="fade-in">
+        <div class="success-banner">
+          <h3>Video klaar!</h3>
+          <p style="margin-top:0.75rem;color:var(--text-dim)">Je video staat klaar op je PC.</p>
+          <a class="btn btn-primary" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4" style="margin-top:1rem;display:inline-block">Download video</a>
+          ${state.thumbnailPath ? `<a class="btn btn-ghost" href="/output/${state.thumbnailPath}" download="${escHtml(state.topic)}_thumbnail.png" style="margin-top:0.5rem;display:inline-block">Download thumbnail</a>` : ''}
         </div>
-      `;
-    } else {
-      m.innerHTML = `
-        <div class="fade-in">
-          <div class="error-msg">${e.message}</div>
-          <p style="margin-top:1rem;color:var(--text-dim);font-size:0.85rem">
-            Heb je <code>client_secret.json</code> in de youtube-factory folder?<br>
-            Zo niet: <a href="https://console.cloud.google.com/apis/credentials" target="_blank" style="color:var(--accent)">Google Cloud Console \u2192 Credentials \u2192 OAuth client ID \u2192 Desktop app</a>
-          </p>
-          <div class="btn-row">
-            <button class="btn btn-ghost" onclick="state.step=6;render()">Terug</button>
-            <a class="btn btn-primary" href="/output/${state.finalVideo}" download="${escHtml(state.topic)}.mp4">Download lokaal ipv</a>
-          </div>
+        <div class="btn-row" style="justify-content:center;margin-top:2rem">
+          <button class="btn btn-ghost" onclick="state.step=6;render()">Terug naar metadata</button>
+          <button class="btn btn-primary" onclick="resetPipeline()">Nieuwe video maken</button>
         </div>
-      `;
-    }
+      </div>
+    `;
   }
 }
 

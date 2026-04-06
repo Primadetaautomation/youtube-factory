@@ -29,6 +29,9 @@ VOICE_PRESETS = [
 YOUTUBE_API_KEY = os.getenv("YOUTUBE_API_KEY", "")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "") or os.getenv("GOOGLE_API_KEY", "")
 
+# Proxy URL for local app to reach Railway server
+PROXY_URL = os.getenv("PROXY_URL", "https://youtube-factory-production.up.railway.app")
+
 # Defaults
 DEFAULT_VIDEO_DURATION = 240  # 4 minutes
 MAX_CLIP_DURATION = 3  # seconds per clip

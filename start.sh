@@ -1,7 +1,5 @@
 #!/bin/bash
+# YouTube Factory — Start script
 cd "$(dirname "$0")"
-echo ""
-echo "  ▶ YouTube Factory"
-echo "  → http://localhost:3333"
-echo ""
-python3 server.py
+source .venv/bin/activate 2>/dev/null || { echo "Draai eerst install.sh"; exit 1; }
+python server.py

@@ -1,11 +1,18 @@
-"""YouTube Factory — FastAPI backend."""
+"""YouTube Factory — Local App Server.
+
+Runs on user's PC. Handles yt-dlp downloads and FFmpeg processing locally.
+AI calls (OpenAI, ElevenLabs, Gemini) are proxied through the Railway server.
+"""
 import asyncio
+import base64
 import logging
-import sys, json, shutil
+import sys
+import json
+import shutil
+import os
 from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-
 sys.path.insert(0, str(Path(__file__).parent))
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
@@ -14,47 +21,39 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 
 from config import OUTPUT_DIR, TEMP_DIR
-from steps.pipeline_config import PipelineConfig
-from steps.auth import verify_credentials, create_token, verify_token
-
-from starlette.middleware.base import BaseHTTPMiddleware
 
 app = FastAPI(title="YouTube Factory")
 
-
-# ── Auth middleware ────────────────────────────
-AUTH_EXEMPT = {"/api/auth/login", "/api/status", "/", "/login"}
-
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        path = request.url.path
-
-        # Skip auth for static files, login, and exempt paths
-        if (path.startswith("/static") or path.startswith("/output")
-                or path in AUTH_EXEMPT or not path.startswith("/api")):
-            return await call_next(request)
-
-        # Check Authorization header
-        auth_header = request.headers.get("Authorization", "")
-        token = auth_header.replace("Bearer ", "") if auth_header.startswith("Bearer ") else ""
-
-        if not token or not verify_token(token):
-            return JSONResponse(status_code=401, content={"detail": "Niet ingelogd"})
-
-        return await call_next(request)
+# ── Proxy config ──────────────────────────────────────
+PROXY_URL = os.getenv("PROXY_URL", "https://youtube-factory-production.up.railway.app")
+_proxy_token: str | None = None
 
 
-class NoCacheMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        if request.url.path.startswith("/api") is False:
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-            response.headers["Pragma"] = "no-cache"
-            response.headers["Expires"] = "0"
-        return response
+async def proxy_request(path: str, data: dict | None = None, method: str = "POST",
+                        files: dict | None = None, form_data: dict | None = None):
+    """Forward a request to the Railway proxy server."""
+    import httpx
 
-app.add_middleware(NoCacheMiddleware)
-app.add_middleware(AuthMiddleware)
+    headers = {}
+    if _proxy_token:
+        headers["Authorization"] = f"Bearer {_proxy_token}"
+
+    url = f"{PROXY_URL}{path}"
+
+    async with httpx.AsyncClient(timeout=180) as client:
+        if method == "GET":
+            resp = await client.get(url, headers=headers)
+        elif files:
+            resp = await client.post(url, headers=headers, files=files, data=form_data or {})
+        else:
+            resp = await client.post(url, headers=headers, json=data)
+
+        if resp.status_code != 200:
+            detail = resp.json().get("detail", resp.text) if resp.headers.get("content-type", "").startswith("application/json") else resp.text
+            raise HTTPException(status_code=resp.status_code, detail=detail)
+
+        return resp.json()
+
 
 # Serve static files
 STATIC_DIR = Path(__file__).parent / "static"
@@ -63,17 +62,19 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 
 
-# ── Auth ────────────────────────────────────────────────
+# ── Auth (authenticates against proxy) ─────────────────
 class LoginRequest(BaseModel):
     email: str
     password: str
 
+
 @app.post("/api/auth/login")
 async def login_endpoint(req: LoginRequest):
-    if verify_credentials(req.email, req.password):
-        token = create_token(req.email)
-        return {"token": token, "email": req.email}
-    raise HTTPException(status_code=401, detail="Ongeldige inloggegevens")
+    global _proxy_token
+    result = await proxy_request("/api/auth/login", req.model_dump())
+    _proxy_token = result["token"]
+    return result
+
 
 @app.get("/login")
 async def login_page():
@@ -125,15 +126,6 @@ class MetadataRequest(BaseModel):
     script: str
     config: dict = {}
 
-class UploadRequest(BaseModel):
-    video_file: str
-    title: str
-    description: str
-    tags: list[str]
-    thumbnail_file: str | None = None
-    privacy: str = "private"
-    publish_at: str | None = None
-
 
 # ── Routes ──────────────────────────────────────────────
 @app.get("/")
@@ -143,19 +135,12 @@ async def index():
 
 @app.get("/api/status")
 async def api_status():
-    from config import OPENAI_API_KEY, ELEVENLABS_API_KEY, YOUTUBE_API_KEY, GEMINI_API_KEY
-    return {
-        "openai": bool(OPENAI_API_KEY),
-        "elevenlabs": bool(ELEVENLABS_API_KEY),
-        "youtube": bool(YOUTUBE_API_KEY),
-        "gemini": bool(GEMINI_API_KEY),
-    }
+    return await proxy_request("/api/proxy/status", method="GET")
 
 
 @app.get("/api/voices")
 async def voices_endpoint():
-    from config import VOICE_PRESETS
-    return {"voices": VOICE_PRESETS}
+    return await proxy_request("/api/proxy/voices", method="GET")
 
 
 class VoicePreviewRequest(BaseModel):
@@ -165,71 +150,43 @@ class VoicePreviewRequest(BaseModel):
 
 @app.post("/api/preview-voice")
 async def preview_voice_endpoint(req: VoicePreviewRequest):
-    import base64
-    from elevenlabs import ElevenLabs
-    from config import ELEVENLABS_API_KEY
-    try:
-        client = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-        audio_gen = client.text_to_speech.convert(
-            voice_id=req.voice_id,
-            text=req.text,
-            model_id="eleven_multilingual_v2",
-            output_format="mp3_44100_128",
-        )
-        audio_bytes = b"".join(audio_gen)
-        b64 = base64.b64encode(audio_bytes).decode()
-        return {"audio_base64": b64}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_request("/api/proxy/preview-voice", req.model_dump())
 
 
+# ── Script (proxied to Railway) ────────────────────────
 @app.post("/api/generate-script")
 async def generate_script_endpoint(req: TopicRequest):
-    from steps.script_generator import generate_script
-    try:
-        cfg = PipelineConfig.from_dict(req.config)
-        data = generate_script(req.topic, req.duration, config=cfg)
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_request("/api/proxy/generate-script", req.model_dump())
 
 
 @app.post("/api/refine-script")
 async def refine_script_endpoint(req: RefineRequest):
-    from steps.script_generator import refine_script
-    try:
-        data = refine_script(req.script, req.feedback)
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_request("/api/proxy/refine-script", req.model_dump())
 
 
+# ── Voiceover (proxied, audio saved locally) ───────────
 @app.post("/api/generate-voiceover")
 async def generate_voiceover_endpoint(req: VoiceoverRequest):
-    from steps.voiceover import generate_voiceover_with_timestamps
-    try:
-        result = generate_voiceover_with_timestamps(
-            req.script, req.name, speed=req.speed,
-            stability=req.stability, similarity_boost=req.similarity_boost, style=req.style,
-            voice_id=req.voice_id,
-        )
-        return {
-            "path": result["audio_path"].name,
-            "duration": result["duration"],
-            "word_timestamps": result["word_timestamps"],
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = await proxy_request("/api/proxy/generate-voiceover", req.model_dump())
+
+    # Save audio locally
+    audio_bytes = base64.b64decode(result["audio_base64"])
+    output_path = OUTPUT_DIR / f"{req.name}.mp3"
+    output_path.write_bytes(audio_bytes)
+
+    return {
+        "path": output_path.name,
+        "duration": result["duration"],
+        "word_timestamps": result["word_timestamps"],
+    }
 
 
+# ── Clips (LOCAL — yt-dlp) ────────────────────────────
 @app.post("/api/search-clips")
 async def search_clips_endpoint(req: TopicRequest):
-    """Search YouTube clips for all scenes."""
     from steps.clip_finder import search_clips_for_scenes
     try:
-        # req.topic is actually the scenes JSON string
         scenes = json.loads(req.topic)
-        # Run synchronous yt-dlp searches in a thread to avoid blocking the event loop
         visuals = await asyncio.to_thread(search_clips_for_scenes, scenes, 5)
         return {"visuals": visuals}
     except Exception as e:
@@ -241,7 +198,6 @@ async def download_clips_endpoint(req: DownloadRequest):
     from steps.clip_finder import download_clip
     from config import get_project_dir
 
-    # Use per-project clips folder
     if req.topic:
         project_dir = get_project_dir(req.topic)
         clips_dir = project_dir / "clips"
@@ -251,7 +207,6 @@ async def download_clips_endpoint(req: DownloadRequest):
     def _download_all():
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        # Clean old clips
         for f in clips_dir.glob("clip_*.mp4"):
             f.unlink()
 
@@ -262,7 +217,6 @@ async def download_clips_endpoint(req: DownloadRequest):
             return None
 
         downloaded = []
-        # 2 parallel downloads: YouTube rate-limits (429) with higher concurrency
         with ThreadPoolExecutor(max_workers=2) as pool:
             futures = [pool.submit(_one, c) for c in req.clips]
             for fut in as_completed(futures):
@@ -270,23 +224,19 @@ async def download_clips_endpoint(req: DownloadRequest):
                 if result:
                     downloaded.append(result)
 
-        # Sort by index to keep order stable
         downloaded.sort(key=lambda x: x["index"])
         return downloaded
 
-    # Run synchronous yt-dlp downloads in a thread to avoid blocking the event loop
     downloaded = await asyncio.to_thread(_download_all)
     return {"clips": downloaded, "count": len(downloaded), "clips_dir": str(clips_dir)}
 
 
+# ── Clip Analysis (proxied — uploads clips to Railway) ─
 @app.post("/api/analyze-clips")
 async def analyze_clips_endpoint(req: AnalyzeClipsRequest):
-    """Analyze downloaded clips with Gemini and match them to script scenes."""
-    from steps.clip_analyzer import analyze_and_match
     from config import get_project_dir
 
     try:
-        scenes = json.loads(req.scenes)
         clips_dir = get_project_dir(req.topic) / "clips"
 
         if not clips_dir.exists() or not list(clips_dir.glob("clip_*.mp4")):
@@ -295,21 +245,36 @@ async def analyze_clips_endpoint(req: AnalyzeClipsRequest):
                 detail="Geen gedownloade clips gevonden. Download eerst clips.",
             )
 
-        result = await asyncio.to_thread(analyze_and_match, clips_dir, scenes)
+        clip_paths = sorted(clips_dir.glob("clip_*.mp4"))
 
-        if result.get("error"):
-            raise HTTPException(status_code=400, detail=result["error"])
+        # Upload clips to proxy for Gemini analysis
+        import httpx
+        headers = {}
+        if _proxy_token:
+            headers["Authorization"] = f"Bearer {_proxy_token}"
 
-        return result
+        files_list = [
+            ("clips", (cp.name, cp.read_bytes(), "video/mp4"))
+            for cp in clip_paths
+        ]
+        async with httpx.AsyncClient(timeout=300) as client:
+            resp = await client.post(
+                f"{PROXY_URL}/api/proxy/analyze-clips",
+                headers=headers,
+                files=files_list,
+                data={"scenes": req.scenes},
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=resp.status_code, detail=resp.text)
+            return resp.json()
 
-    except json.JSONDecodeError:
-        raise HTTPException(status_code=400, detail="Ongeldig scenes JSON formaat")
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Video Combine (LOCAL — FFmpeg) ─────────────────────
 class CombineWithSubsRequest(BaseModel):
     audio_duration: float
     name: str
@@ -323,9 +288,9 @@ class CombineWithSubsRequest(BaseModel):
 async def combine_video_endpoint(req: CombineWithSubsRequest):
     from steps.video_editor import combine_clips, add_audio_to_video, burn_subtitles
     from steps.subtitle_generator import generate_srt_from_timestamps, generate_srt
+    from steps.pipeline_config import PipelineConfig
     from config import get_project_dir
     try:
-        # Find clips in project folder or temp
         if req.topic:
             clips_dir = get_project_dir(req.topic) / "clips"
         else:
@@ -340,7 +305,6 @@ async def combine_video_endpoint(req: CombineWithSubsRequest):
         audio_path = OUTPUT_DIR / f"{req.name}.mp3"
         final = add_audio_to_video(combined, audio_path, req.name)
 
-        # Generate and burn subtitles
         if req.word_timestamps:
             srt_path = generate_srt_from_timestamps(req.word_timestamps, req.name)
             final = burn_subtitles(final, srt_path, req.name, config=cfg)
@@ -353,29 +317,27 @@ async def combine_video_endpoint(req: CombineWithSubsRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Thumbnails (proxied, images saved locally) ─────────
 @app.post("/api/generate-thumbnail")
 async def generate_thumbnail_endpoint(req: ThumbnailRequest):
-    from steps.thumbnail import generate_thumbnail
-    try:
-        path = generate_thumbnail(req.topic, req.title, req.name)
-        return {"thumbnail": path.name}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    result = await proxy_request("/api/proxy/generate-thumbnail", req.model_dump())
+    img_bytes = base64.b64decode(result["image_base64"])
+    output_path = OUTPUT_DIR / f"{req.name}.png"
+    output_path.write_bytes(img_bytes)
+    return {"thumbnail": output_path.name}
 
 
 @app.post("/api/upload-thumbnail")
 async def upload_thumbnail_endpoint(file: UploadFile = File(...)):
-    """Accept a user-uploaded thumbnail image."""
     try:
         import uuid
+        from PIL import Image
         ext = Path(file.filename).suffix or ".png"
         safe_name = f"thumb_upload_{uuid.uuid4().hex[:8]}{ext}"
         dest = OUTPUT_DIR / safe_name
         contents = await file.read()
         dest.write_bytes(contents)
 
-        # Resize to standard YouTube thumbnail size
-        from PIL import Image
         img = Image.open(dest)
         img = img.resize((1280, 720), Image.LANCZOS)
         png_name = dest.with_suffix(".png").name
@@ -389,85 +351,82 @@ async def upload_thumbnail_endpoint(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-class NanoBananaRequest(BaseModel):
-    prompt: str
-    name: str = "thumbnail"
-    base_image: str | None = None  # filename in output dir
-
-
 @app.post("/api/generate-thumbnail-ai")
 async def generate_thumbnail_ai_endpoint(
     prompt: str = Form(...),
     name: str = Form("thumbnail"),
     base_image: UploadFile | None = File(None),
 ):
-    """Generate or edit a thumbnail using Gemini image generation (Nano Banana)."""
-    from steps.thumbnail import generate_thumbnail_nanobanana
-    try:
-        base_path = None
-        if base_image and base_image.filename:
-            import uuid
-            ext = Path(base_image.filename).suffix or ".png"
-            temp_name = f"nb_base_{uuid.uuid4().hex[:8]}{ext}"
-            base_path = OUTPUT_DIR / temp_name
-            base_path.write_bytes(await base_image.read())
+    import httpx
+    headers = {}
+    if _proxy_token:
+        headers["Authorization"] = f"Bearer {_proxy_token}"
 
-        path = generate_thumbnail_nanobanana(prompt, name, base_path)
+    files_list = []
+    if base_image and base_image.filename:
+        files_list.append(("base_image", (base_image.filename, await base_image.read(), base_image.content_type or "image/png")))
 
-        # Clean up temp base image
-        if base_path:
-            base_path.unlink(missing_ok=True)
+    async with httpx.AsyncClient(timeout=180) as client:
+        resp = await client.post(
+            f"{PROXY_URL}/api/proxy/generate-thumbnail-ai",
+            headers=headers,
+            files=files_list or None,
+            data={"prompt": prompt, "name": name},
+        )
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        result = resp.json()
 
-        return {"thumbnail": path.name}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    img_bytes = base64.b64decode(result["image_base64"])
+    output_path = OUTPUT_DIR / f"{name}.png"
+    output_path.write_bytes(img_bytes)
+    return {"thumbnail": output_path.name}
 
 
+# ── Metadata (proxied) ────────────────────────────────
 @app.post("/api/generate-metadata")
 async def generate_metadata_endpoint(req: MetadataRequest):
-    from steps.metadata import generate_metadata
-    try:
-        data = generate_metadata(req.topic, req.script)
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_request("/api/proxy/generate-metadata", req.model_dump())
 
 
 @app.post("/api/viral-titles")
 async def viral_titles_endpoint(req: MetadataRequest):
-    from steps.metadata import generate_viral_titles
-    try:
-        data = generate_viral_titles(req.topic, req.script)
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_request("/api/proxy/viral-titles", req.model_dump())
 
 
 @app.post("/api/viral-descriptions")
 async def viral_descriptions_endpoint(req: MetadataRequest):
-    from steps.metadata import generate_viral_descriptions
-    try:
-        data = generate_viral_descriptions(req.topic, req.script)
-        return data
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await proxy_request("/api/proxy/viral-descriptions", req.model_dump())
 
 
+# ── Niche Analysis (local yt-dlp search + proxied OpenAI) ─
 class NicheRequest(BaseModel):
     topic: str
 
+
 @app.post("/api/analyze-niche")
 async def analyze_niche_endpoint(req: NicheRequest):
-    from steps.niche_analyzer import analyze_niche
+    from steps.clip_finder import search_youtube
     try:
-        data = await asyncio.to_thread(analyze_niche, req.topic)
-        return data
+        # Local yt-dlp search
+        results = await asyncio.to_thread(search_youtube, req.topic, 10)
+        titles = [r.get("title", "") for r in results]
+        channels = [r.get("channel", "") for r in results]
+
+        # Proxy to Railway for OpenAI analysis
+        return await proxy_request("/api/proxy/analyze-niche", {
+            "topic": req.topic,
+            "titles": titles,
+            "channels": channels,
+        })
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Copyright Check (LOCAL — yt-dlp) ──────────────────
 class CopyrightRequest(BaseModel):
     url: str
+
 
 @app.post("/api/check-copyright")
 async def check_copyright_endpoint(req: CopyrightRequest):
@@ -479,15 +438,17 @@ async def check_copyright_endpoint(req: CopyrightRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Prompt Templates (proxied) ─────────────────────────
 @app.get("/api/prompt-templates")
 async def prompt_templates_endpoint():
-    from steps.prompt_templates import get_prompt_templates
-    return {"templates": get_prompt_templates()}
+    return await proxy_request("/api/proxy/prompt-templates", method="GET")
 
 
+# ── Thumbnail Edit (LOCAL — PIL) ───────────────────────
 class ThumbnailEditRequest(BaseModel):
-    base_image: str  # filename in output dir
-    edits: dict  # {crop, text_overlays, filters}
+    base_image: str
+    edits: dict
+
 
 @app.post("/api/edit-thumbnail")
 async def edit_thumbnail_endpoint(req: ThumbnailEditRequest):
@@ -502,9 +463,11 @@ async def edit_thumbnail_endpoint(req: ThumbnailEditRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Hook Preview (LOCAL — FFmpeg) ──────────────────────
 class HookPreviewRequest(BaseModel):
     video_file: str
     duration: float = 3.0
+
 
 @app.post("/api/render-hook")
 async def render_hook_endpoint(req: HookPreviewRequest):
@@ -519,6 +482,7 @@ async def render_hook_endpoint(req: HookPreviewRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Highlight Extraction (LOCAL — FFmpeg) ──────────────
 @app.post("/api/extract-highlights")
 async def extract_highlights_endpoint(file: UploadFile = File(...), count: int = Form(5)):
     from steps.highlight_extractor import extract_highlights
@@ -537,70 +501,9 @@ async def extract_highlights_endpoint(file: UploadFile = File(...), count: int =
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/api/upload")
-async def upload_endpoint(req: UploadRequest):
-    from steps.uploader import upload_video
-    try:
-        video_path = OUTPUT_DIR / req.video_file
-        thumb_path = OUTPUT_DIR / req.thumbnail_file if req.thumbnail_file else None
-        publish_at = req.publish_at if hasattr(req, 'publish_at') else None
-        video_id = upload_video(video_path, req.title, req.description, req.tags, thumb_path, req.privacy, publish_at)
-        return {"video_id": video_id, "url": f"https://youtu.be/{video_id}"}
-    except FileNotFoundError:
-        raise HTTPException(status_code=400, detail="client_secret.json niet gevonden. Maak OAuth credentials aan in Google Cloud Console.")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-class BatchTopicItem(BaseModel):
-    topic: str
-    duration: int = 4
-
-class BatchRequest(BaseModel):
-    topics: list[BatchTopicItem]
-    start_date: str
-    publish_time: str = "09:00"
-    auto_upload: bool = False
-    config: dict = {}
-
-
-@app.post("/api/batch")
-async def batch_endpoint(req: BatchRequest):
-    """Run pipeline for multiple topics with scheduled publishing."""
-    from steps.batch_runner import run_batch_pipeline
-    try:
-        results = run_batch_pipeline(
-            [t.model_dump() for t in req.topics],
-            req.start_date,
-            req.publish_time,
-        )
-
-        # Auto-upload if requested and client_secret exists
-        if req.auto_upload:
-            from steps.uploader import upload_video
-            for r in results:
-                if r["status"] == "ready" and r.get("video_file"):
-                    try:
-                        video_path = OUTPUT_DIR / r["video_file"]
-                        thumb_path = OUTPUT_DIR / r["thumbnail_file"] if r.get("thumbnail_file") else None
-                        video_id = upload_video(
-                            video_path, r["title"], r["description"], r["tags"],
-                            thumb_path, "private", r["publish_at"],
-                        )
-                        r["status"] = "uploaded"
-                        r["video_id"] = video_id
-                        r["url"] = f"https://youtu.be/{video_id}"
-                    except Exception as e:
-                        r["upload_error"] = str(e)
-
-        return {"results": results}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
+# ── Reset (LOCAL) ──────────────────────────────────────
 @app.post("/api/reset")
 async def reset_endpoint():
-    """Clean temp and output dirs."""
     for f in TEMP_DIR.glob("clip_*.mp4"):
         f.unlink()
     for f in TEMP_DIR.glob("*.txt"):
@@ -608,8 +511,16 @@ async def reset_endpoint():
     return {"status": "ok"}
 
 
-if __name__ == "__main__":
+# ── Run ────────────────────────────────────────────────
+def main():
+    """CLI entry point for youtube-factory command."""
     import uvicorn
-    import os
+    import webbrowser
     port = int(os.getenv("PORT", "3333"))
+    print(f"\n  YouTube Factory draait op http://localhost:{port}\n")
+    webbrowser.open(f"http://localhost:{port}")
     uvicorn.run(app, host="0.0.0.0", port=port)
+
+
+if __name__ == "__main__":
+    main()
