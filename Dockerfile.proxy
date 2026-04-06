@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY config.py .
 COPY server_proxy.py .
 COPY steps/ steps/
+COPY static/ static/
 
 # Create required dirs
 RUN mkdir -p output temp
