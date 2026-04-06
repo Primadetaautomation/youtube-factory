@@ -13,11 +13,7 @@ WORKDIR /app
 COPY requirements-proxy.txt requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY config.py .
-COPY server_proxy.py .
-COPY steps/ steps/
-COPY install-mac.command .
-COPY install.bat .
+COPY . .
 
 # Create required dirs
 RUN mkdir -p output temp
