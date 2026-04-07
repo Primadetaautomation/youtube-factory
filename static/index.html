@@ -366,6 +366,25 @@ label {
   margin-top: 0.15rem;
 }
 
+/* Clip Manager (Step 4) */
+.clip-manager-item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.5rem;
+}
+.clip-manager-item.clip-removed {
+  border-color: var(--primary);
+  border-style: dashed;
+}
+.clip-manager-label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+  color: var(--text-dim);
+}
+
 /* ── AI match badges & highlights ────────── */
 .ai-match-btn {
   background: linear-gradient(135deg, #7c3aed, #4f46e5);
@@ -1169,17 +1188,17 @@ function renderStep1(m, hdr) {
         <p>Bewerk het script of laat AI het verfijnen met feedback.</p>
       </div>
       <div class="tabs">
-        <div class="tab active" onclick="switchTab(this, 'scriptTab')">Script</div>
-        <div class="tab" onclick="switchTab(this, 'scenesTab')">Scenes & Visuals</div>
+        <div class="tab ${(state.scriptActiveTab||'scriptTab')==='scriptTab'?'active':''}" onclick="switchTab(this, 'scriptTab')">Script</div>
+        <div class="tab ${(state.scriptActiveTab||'scriptTab')==='scenesTab'?'active':''}" onclick="switchTab(this, 'scenesTab')">Scenes & Visuals</div>
       </div>
-      <div class="tab-content active" id="scriptTab">
+      <div class="tab-content ${(state.scriptActiveTab||'scriptTab')==='scriptTab'?'active':''}" id="scriptTab">
         <textarea id="scriptArea">${escHtml(script)}</textarea>
         <div class="input-row" style="margin-top:0.75rem">
           <input type="text" id="feedbackInput" placeholder="Feedback voor AI (optioneel): bijv. 'maak het dramatischer'">
           <button class="btn btn-ghost" onclick="refineScript()">Verfijn met AI</button>
         </div>
       </div>
-      <div class="tab-content" id="scenesTab">
+      <div class="tab-content ${(state.scriptActiveTab||'scriptTab')==='scenesTab'?'active':''}" id="scenesTab">
         ${scenes.map((s, i) => `
           <div class="scene-block open" id="sceneBlock${i}">
             <div class="scene-header" onclick="this.parentElement.classList.toggle('open')">
@@ -1247,6 +1266,7 @@ async function refineScript() {
 
 function removeScene(i) {
   state.scriptData.scenes.splice(i, 1);
+  state.scriptActiveTab = 'scenesTab';
   render();
 }
 
@@ -1255,16 +1275,19 @@ function addScene() {
     timestamp: '', section: 'NIEUW', narration: '',
     visuals: [{ search_query: '', description: '', line: '' }],
   });
+  state.scriptActiveTab = 'scenesTab';
   render();
 }
 
 function removeVisual(sceneIdx, visualIdx) {
   state.scriptData.scenes[sceneIdx].visuals.splice(visualIdx, 1);
+  state.scriptActiveTab = 'scenesTab';
   render();
 }
 
 function addVisual(sceneIdx) {
   state.scriptData.scenes[sceneIdx].visuals.push({ search_query: '', description: '', line: '' });
+  state.scriptActiveTab = 'scenesTab';
   render();
 }
 
@@ -1664,6 +1687,12 @@ async function renderStep4(m, hdr) {
     return opt ? { url: opt.url, title: opt.title, index: i } : null;
   }).filter(Boolean);
 
+  // If clips already downloaded, show management view
+  if (state.clips && state.clips.length > 0) {
+    renderClipManager(m, hdr);
+    return;
+  }
+
   m.innerHTML = `
     <div class="fade-in">
       ${hdr}
@@ -1687,20 +1716,120 @@ async function renderStep4(m, hdr) {
     state.clips = res.clips;
 
     document.getElementById('dlProgress').style.width = '100%';
-    const log = document.getElementById('dlLog');
-    log.innerHTML = res.clips.map(c =>
-      `<div class="log-ok">\u2713 ${escHtml(c.title)}</div>`
-    ).join('');
-    if (res.count < clips.length) {
-      log.innerHTML += `<div class="log-err">\u26A0 ${clips.length - res.count} clips mislukt</div>`;
-    }
-    document.getElementById('dlButtons').style.display = 'flex';
+    // Show clip manager instead of simple log
+    renderClipManager(m, hdr);
   } catch(e) {
     m.innerHTML += `<div class="error-msg">${e.message}</div>
       <div class="btn-row">
         <button class="btn btn-ghost" onclick="state.step=3;render()">Terug</button>
         ${isBatchActive() ? '<button class="btn btn-ghost" onclick="skipBatchVideo(\'Download mislukt\')">Overslaan</button>' : ''}
       </div>`;
+  }
+}
+
+function renderClipManager(m, hdr) {
+  const visuals = state.visualsData || [];
+  const activeClips = state.clips.filter(c => !c.removed);
+
+  m.innerHTML = `
+    <div class="fade-in">
+      ${hdr}
+      <div class="step-header">
+        <div class="label">Stap 05</div>
+        <h2>Clips beheren</h2>
+        <p>${activeClips.length} clips klaar. Verwijder clips die niet passen en kies een vervanging.</p>
+      </div>
+      <div id="clipManagerList">
+        ${state.clips.map((clip, ci) => {
+          const visual = visuals[clip.index] || {};
+          const selOpt = (visual.options || [])[visual.selected_index || 0];
+          const thumb = selOpt ? selOpt.thumbnail : '';
+
+          if (clip.removed) {
+            // Show replacement picker
+            return `
+              <div class="clip-manager-item clip-removed">
+                <div class="clip-manager-label">Clip ${clip.index + 1}: ${escHtml(visual.description || '')}</div>
+                <div class="clip-grid" style="margin-top:0.5rem">
+                  ${(visual.options || []).map((opt, oi) => `
+                    <div class="clip-option" onclick="replaceClip(${ci}, ${clip.index}, ${oi})" style="cursor:pointer">
+                      <img src="${escHtml(opt.thumbnail)}" alt="" loading="lazy">
+                      <div class="clip-info">
+                        <div class="clip-title">${escHtml(opt.title)}</div>
+                        <div class="clip-channel">${escHtml(opt.channel)}</div>
+                      </div>
+                    </div>
+                  `).join('')}
+                </div>
+              </div>
+            `;
+          }
+
+          return `
+            <div class="clip-manager-item">
+              <div style="display:flex;align-items:center;gap:0.75rem">
+                <img src="${escHtml(thumb)}" alt="" style="width:80px;height:45px;object-fit:cover;border-radius:6px">
+                <div style="flex:1;min-width:0">
+                  <div style="font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escHtml(clip.title)}</div>
+                  <div style="font-size:0.8rem;color:var(--text-muted)">Clip ${clip.index + 1}</div>
+                </div>
+                <button class="btn btn-ghost" onclick="removeClip(${ci})" style="color:var(--error);flex-shrink:0" title="Verwijder clip">
+                  ✕ Verwijder
+                </button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+      <div class="btn-row" style="margin-top:1.5rem">
+        <button class="btn btn-ghost" onclick="state.step=3;state.clips=[];render()">Terug (opnieuw kiezen)</button>
+        <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="proceedToStep5()" ${activeClips.length === 0 ? 'disabled' : ''}>Video samenstellen</button>
+      </div>
+    </div>
+  `;
+}
+
+function removeClip(clipIdx) {
+  state.clips[clipIdx].removed = true;
+  render();
+}
+
+async function proceedToStep5() {
+  // Remove files of deleted clips before combining
+  const removedIndices = state.clips.filter(c => c.removed).map(c => c.index);
+  if (removedIndices.length > 0) {
+    await api('remove-clips', { indices: removedIndices, topic: state.topic });
+  }
+  // Clean state: keep only active clips
+  state.clips = state.clips.filter(c => !c.removed);
+  state.step = 5;
+  render();
+}
+
+async function replaceClip(clipIdx, visualIdx, optionIdx) {
+  const visual = state.visualsData[visualIdx];
+  const opt = visual.options[optionIdx];
+
+  // Update the selected index in visualsData
+  visual.selected_index = optionIdx;
+
+  // Show loading state
+  state.clips[clipIdx] = { ...state.clips[clipIdx], removed: false, replacing: true, title: opt.title };
+  render();
+
+  try {
+    const res = await api('download-single-clip', {
+      url: opt.url, title: opt.title, index: visualIdx, topic: state.topic
+    }, 120000);
+    state.clips[clipIdx] = { index: visualIdx, file: res.file, title: res.title, removed: false };
+    render();
+  } catch(e) {
+    // Revert to removed state on failure
+    state.clips[clipIdx].removed = true;
+    state.clips[clipIdx].replacing = false;
+    render();
+    alert('Download mislukt: ' + e.message);
   }
 }
 
@@ -2045,6 +2174,7 @@ function switchTab(el, id) {
   el.classList.add('active');
   document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
   document.getElementById(id).classList.add('active');
+  state.scriptActiveTab = id;
 }
 
 function resetPipeline() {

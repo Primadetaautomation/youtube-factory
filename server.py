@@ -111,6 +111,16 @@ class DownloadRequest(BaseModel):
     topic: str = ""
     config: dict = {}
 
+class SingleClipRequest(BaseModel):
+    url: str
+    title: str
+    index: int
+    topic: str = ""
+
+class RemoveClipsRequest(BaseModel):
+    indices: list[int]
+    topic: str = ""
+
 class ThumbnailRequest(BaseModel):
     topic: str
     title: str
@@ -229,6 +239,47 @@ async def download_clips_endpoint(req: DownloadRequest):
 
     downloaded = await asyncio.to_thread(_download_all)
     return {"clips": downloaded, "count": len(downloaded), "clips_dir": str(clips_dir)}
+
+
+@app.post("/api/download-single-clip")
+async def download_single_clip_endpoint(req: SingleClipRequest):
+    from steps.clip_finder import download_clip
+    from config import get_project_dir
+
+    if req.topic:
+        project_dir = get_project_dir(req.topic)
+        clips_dir = project_dir / "clips"
+    else:
+        clips_dir = TEMP_DIR
+
+    def _download():
+        path = download_clip(req.url, req.index, clips_dir=clips_dir)
+        if path:
+            return {"index": req.index, "file": path.name, "title": req.title}
+        return None
+
+    result = await asyncio.to_thread(_download)
+    if not result:
+        raise HTTPException(status_code=500, detail="Download mislukt")
+    return result
+
+
+@app.post("/api/remove-clips")
+async def remove_clips_endpoint(req: RemoveClipsRequest):
+    from config import get_project_dir
+
+    if req.topic:
+        clips_dir = get_project_dir(req.topic) / "clips"
+    else:
+        clips_dir = TEMP_DIR
+
+    removed = []
+    for idx in req.indices:
+        clip_file = clips_dir / f"clip_{idx:03d}.mp4"
+        if clip_file.exists():
+            clip_file.unlink()
+            removed.append(idx)
+    return {"removed": removed}
 
 
 # ── Clip Analysis (proxied — uploads clips to Railway) ─
