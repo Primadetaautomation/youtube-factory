@@ -341,6 +341,42 @@ label {
   color: white;
   font-weight: 700;
 }
+.clip-option.selected .clip-delete-btn { right: 30px; }
+.clip-delete-btn {
+  position: absolute;
+  top: 6px; right: 6px;
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: rgba(220, 38, 38, 0.9);
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-size: 0.75rem;
+  line-height: 1;
+  padding: 0;
+  z-index: 3;
+  transition: background 0.15s;
+}
+.clip-delete-btn:hover { background: rgb(220, 38, 38); }
+.clip-row-empty {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  background: var(--surface-2);
+  border-radius: 8px;
+}
+.clip-row-empty .spinner { display: inline-block; vertical-align: middle; margin-right: 0.5rem; }
+.clip-row-error {
+  padding: 0.75rem;
+  color: var(--error, #ff3d3d);
+  background: rgba(255, 61, 61, 0.1);
+  border: 1px solid rgba(255, 61, 61, 0.3);
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
 .clip-option img {
   width: 100%;
   aspect-ratio: 16/9;
@@ -1501,8 +1537,27 @@ function renderStep3(m, hdr) {
     return;
   }
 
+  // Initialize blacklist from localStorage on first entry (per topic)
+  if (!state.deletedVideoIds || state._deletedIdsTopic !== state.topic) {
+    state.deletedVideoIds = loadDeletedIds(state.topic);
+    state._deletedIdsTopic = state.topic;
+  }
+
   const visuals = state.visualsData;
   const matches = state.aiMatches;
+  const deleted = state.deletedVideoIds || new Set();
+
+  // Row validity: does each row have a concrete selection pointing at a non-deleted option?
+  const rowHasValidSelection = (v) => {
+    if (v._researching) return false;
+    const visible = (v.options || []).filter(o => o && !deleted.has(o.video_id));
+    if (visible.length === 0) return false;
+    if (v.selected_index === null || v.selected_index === undefined) return false;
+    const selOpt = (v.options || [])[v.selected_index];
+    if (!selOpt || deleted.has(selOpt.video_id)) return false;
+    return true;
+  };
+  const canDownload = visuals.length > 0 && visuals.every(rowHasValidSelection);
 
   // Build a lookup: visual index -> match info
   const aiMatchMap = {};
@@ -1538,37 +1593,42 @@ function renderStep3(m, hdr) {
       <div id="visualBlocks">
         ${visuals.map((v, vi) => {
           const aiMatch = aiMatchMap[vi];
-          // Find the option index that corresponds to the AI recommended clip
-          let aiOptionIndex = -1;
-          if (aiMatch) {
-            // The AI match refers to clip_index (download order), which maps to the visual's selected option
-            // But for the Smart Match feature, we need to highlight which option in THIS visual's grid the AI recommends
-            // Since each visual has its own set of options, and the AI analyzed the *downloaded* clips,
-            // the AI's recommendation means: "for this scene, the clip downloaded for visual X is best"
-            // We highlight the currently selected option if this visual's index matches the AI's recommendation
-            aiOptionIndex = v.selected_index || 0;
-          }
-          return `
-          <div class="visual-block">
-            <div class="visual-label">Clip ${vi + 1}: ${escHtml(v.description)}</div>
-            <div class="visual-query">zoekopdracht: ${escHtml(v.search_query)}</div>
-            ${aiMatch ? `<div class="ai-reason">${escHtml(aiMatch.reason)}<span class="ai-confidence">${Math.round(aiMatch.confidence * 100)}% match</span></div>` : ''}
-            <div class="clip-grid">
-              ${(v.options || []).map((opt, oi) => {
-                const isSelected = oi === (v.selected_index || 0);
-                const isAiPick = aiMatch && oi === aiOptionIndex;
-                return `
+          const aiOptionIndex = aiMatch ? (v.selected_index || 0) : -1;
+          const visibleOptions = (v.options || []).map((opt, oi) => ({ opt, oi }))
+            .filter(({ opt }) => opt && !deleted.has(opt.video_id));
+
+          let bodyHtml;
+          if (v._researching) {
+            bodyHtml = `<div class="clip-row-empty"><div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block"></div>Nieuwe clips zoeken...</div>`;
+          } else if (v._researchError) {
+            bodyHtml = `<div class="clip-row-error">Zoeken mislukt: ${escHtml(v._researchError)} <button class="btn btn-ghost" onclick="researchVisual(${vi})" style="margin-left:0.5rem">Opnieuw proberen</button></div>`;
+          } else if (visibleOptions.length === 0) {
+            bodyHtml = `<div class="clip-row-empty">Geen opties meer — nieuwe clips worden opgehaald...</div>`;
+          } else {
+            bodyHtml = `<div class="clip-grid">${visibleOptions.map(({ opt, oi }) => {
+              const isSelected = v.selected_index === oi;
+              const isAiPick = aiMatch && oi === aiOptionIndex;
+              return `
                 <div class="clip-option ${isSelected ? 'selected' : ''} ${isAiPick ? 'ai-recommended' : ''}"
                      onclick="selectClip(${vi}, ${oi})">
                   ${isAiPick ? '<div class="ai-badge">AI aanbevolen</div>' : ''}
+                  <button class="clip-delete-btn" title="Verwijder deze clip" onclick="deleteClipOption(${vi}, ${oi}, event)">✕</button>
                   <img src="${escHtml(opt.thumbnail)}" alt="" loading="lazy">
                   <div class="clip-info">
                     <div class="clip-title">${escHtml(opt.title)}</div>
                     <div class="clip-channel">${escHtml(opt.channel)}</div>
                   </div>
                 </div>
-              `}).join('')}
-            </div>
+              `;
+            }).join('')}</div>`;
+          }
+
+          return `
+          <div class="visual-block">
+            <div class="visual-label">Clip ${vi + 1}: ${escHtml(v.description)}</div>
+            <div class="visual-query">zoekopdracht: ${escHtml(v.search_query)}</div>
+            ${aiMatch ? `<div class="ai-reason">${escHtml(aiMatch.reason)}<span class="ai-confidence">${Math.round(aiMatch.confidence * 100)}% match</span></div>` : ''}
+            ${bodyHtml}
           </div>
         `}).join('')}
       </div>
@@ -1578,10 +1638,20 @@ function renderStep3(m, hdr) {
           ${state.aiMatches ? 'Opnieuw analyseren' : 'Smart Match (AI analyseert clips)'}
         </button>
         <div class="spacer"></div>
-        <button class="btn btn-primary" onclick="state.step=4;render()">Download geselecteerde clips</button>
+        <button class="btn btn-primary" onclick="state.step=4;render()" ${canDownload ? '' : 'disabled'} title="${canDownload ? '' : 'Elke rij moet een geselecteerde clip hebben'}">Download geselecteerde clips</button>
       </div>
     </div>
   `;
+
+  // Auto-trigger re-search for any row that has zero visible options and isn't already researching
+  for (let vi = 0; vi < visuals.length; vi++) {
+    const v = visuals[vi];
+    if (v._researching || v._researchError) continue;
+    const visible = (v.options || []).filter(o => o && !deleted.has(o.video_id));
+    if (visible.length === 0 && v.search_query) {
+      researchVisual(vi);
+    }
+  }
 }
 
 function findVisualsForScene(sceneIndex) {
@@ -1607,6 +1677,91 @@ function selectClip(vi, oi) {
       el.classList.toggle('selected', i === oi);
     });
   }
+}
+
+// ── Deleted clips blacklist (persisted in localStorage per topic) ─
+function deletedIdsKey(topic) {
+  return 'youtube-factory:deleted-clips:' + (topic || '_default');
+}
+function loadDeletedIds(topic) {
+  try {
+    const raw = localStorage.getItem(deletedIdsKey(topic));
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw);
+    return new Set(Array.isArray(arr) ? arr : []);
+  } catch(e) {
+    console.warn('loadDeletedIds failed', e);
+    return new Set();
+  }
+}
+function saveDeletedIds(topic, idsSet) {
+  try {
+    localStorage.setItem(deletedIdsKey(topic), JSON.stringify([...idsSet]));
+  } catch(e) {
+    console.warn('saveDeletedIds failed', e);
+  }
+}
+
+async function deleteClipOption(vi, oi, ev) {
+  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
+  const visual = state.visualsData[vi];
+  if (!visual) return;
+  const opt = (visual.options || [])[oi];
+  if (!opt || !opt.video_id) return;
+
+  if (!state.deletedVideoIds) state.deletedVideoIds = new Set();
+  state.deletedVideoIds.add(opt.video_id);
+  saveDeletedIds(state.topic, state.deletedVideoIds);
+
+  // Cascade: any visual whose currently-selected option is this video_id loses its selection.
+  // This covers both the same row and any other row where the same video appeared.
+  for (const otherVisual of state.visualsData || []) {
+    if (otherVisual.selected_index === null || otherVisual.selected_index === undefined) continue;
+    const selOpt = (otherVisual.options || [])[otherVisual.selected_index];
+    if (selOpt && selOpt.video_id === opt.video_id) {
+      otherVisual.selected_index = null;
+    }
+  }
+
+  render();
+
+  // If the whole row is now empty after filtering → auto re-search
+  const visibleCount = (visual.options || []).filter(o => !state.deletedVideoIds.has(o.video_id)).length;
+  if (visibleCount === 0) {
+    await researchVisual(vi);
+  }
+}
+
+async function researchVisual(vi) {
+  const visual = state.visualsData[vi];
+  if (!visual) return;
+  visual._researching = true;
+  visual._researchError = null;
+  render();
+
+  try {
+    const excludeIds = [...(state.deletedVideoIds || [])];
+    const res = await api('search-single-visual', {
+      query: visual.search_query,
+      exclude_ids: excludeIds,
+      count: 5,
+    }, 90000);
+    visual.options = res.options || [];
+    visual.selected_index = visual.options.length > 0 ? 0 : null;
+    visual._researching = false;
+    visual._researchError = null;
+    render();
+  } catch(e) {
+    visual._researching = false;
+    visual._researchError = e.message || 'Onbekende fout';
+    render();
+  }
+}
+
+function resetDeletedIdsForTopic() {
+  state.deletedVideoIds = new Set();
+  saveDeletedIds(state.topic, state.deletedVideoIds);
+  render();
 }
 
 async function runAiMatch() {

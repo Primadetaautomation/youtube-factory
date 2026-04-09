@@ -121,6 +121,11 @@ class RemoveClipsRequest(BaseModel):
     indices: list[int]
     topic: str = ""
 
+class SingleVisualSearchRequest(BaseModel):
+    query: str
+    exclude_ids: list[str] = []
+    count: int = 5
+
 class ThumbnailRequest(BaseModel):
     topic: str
     title: str
@@ -262,6 +267,18 @@ async def download_single_clip_endpoint(req: SingleClipRequest):
     if not result:
         raise HTTPException(status_code=500, detail="Download mislukt")
     return result
+
+
+@app.post("/api/search-single-visual")
+async def search_single_visual_endpoint(req: SingleVisualSearchRequest):
+    from steps.clip_finder import search_single_visual
+    try:
+        options = await asyncio.to_thread(
+            search_single_visual, req.query, req.exclude_ids, req.count
+        )
+        return {"options": options}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/remove-clips")

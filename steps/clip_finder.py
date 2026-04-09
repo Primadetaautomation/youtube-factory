@@ -178,6 +178,24 @@ def download_clip(
     return None
 
 
+def search_single_visual(
+    query: str,
+    exclude_ids: list[str] | None = None,
+    count: int = 5,
+) -> list[dict]:
+    """Search YouTube for a single visual, filtering out blacklisted video_ids.
+
+    Requests 4x the desired count so the blacklist filter has room to operate,
+    then returns the top `count` non-excluded results.
+    """
+    if not query:
+        return []
+    excluded = set(exclude_ids or [])
+    raw = search_youtube(query, max_results=count * 4)
+    filtered = [r for r in raw if r.get("video_id") not in excluded]
+    return filtered[:count]
+
+
 def search_clips_for_scenes(scenes: list, results_per_query: int = 5) -> list[dict]:
     """Search YouTube for each visual in each scene, return options per visual."""
     all_visuals = []
