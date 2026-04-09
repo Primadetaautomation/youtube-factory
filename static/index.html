@@ -1548,16 +1548,21 @@ function renderStep3(m, hdr) {
   const deleted = state.deletedVideoIds || new Set();
 
   // Row validity: does each row have a concrete selection pointing at a non-deleted option?
-  const rowHasValidSelection = (v) => {
-    if (v._researching) return false;
+  const rowValidityReason = (v, vi) => {
+    if (v._researching) return `row ${vi}: researching`;
     const visible = (v.options || []).filter(o => o && !deleted.has(o.video_id));
-    if (visible.length === 0) return false;
-    if (v.selected_index === null || v.selected_index === undefined) return false;
+    if (visible.length === 0) return `row ${vi}: no visible options`;
+    if (v.selected_index === null || v.selected_index === undefined) return `row ${vi}: no selection`;
     const selOpt = (v.options || [])[v.selected_index];
-    if (!selOpt || deleted.has(selOpt.video_id)) return false;
-    return true;
+    if (!selOpt) return `row ${vi}: selected_index ${v.selected_index} out of bounds`;
+    if (deleted.has(selOpt.video_id)) return `row ${vi}: selected option is blacklisted`;
+    return null;
   };
-  const canDownload = visuals.length > 0 && visuals.every(rowHasValidSelection);
+  const blockingReasons = visuals.map(rowValidityReason).filter(Boolean);
+  const canDownload = visuals.length > 0 && blockingReasons.length === 0;
+  if (!canDownload && visuals.length > 0) {
+    console.debug('[step3] download disabled:', blockingReasons);
+  }
 
   // Build a lookup: visual index -> match info
   const aiMatchMap = {};
@@ -1612,7 +1617,7 @@ function renderStep3(m, hdr) {
                 <div class="clip-option ${isSelected ? 'selected' : ''} ${isAiPick ? 'ai-recommended' : ''}"
                      onclick="selectClip(${vi}, ${oi})">
                   ${isAiPick ? '<div class="ai-badge">AI aanbevolen</div>' : ''}
-                  <button class="clip-delete-btn" title="Verwijder deze clip" onclick="deleteClipOption(${vi}, ${oi}, event)">✕</button>
+                  <button class="clip-delete-btn" title="Verwijder deze clip" onclick="event.stopPropagation(); event.preventDefault(); deleteClipOption(${vi}, ${oi}); return false;">✕</button>
                   <img src="${escHtml(opt.thumbnail)}" alt="" loading="lazy">
                   <div class="clip-info">
                     <div class="clip-title">${escHtml(opt.title)}</div>
@@ -1669,14 +1674,11 @@ function findVisualsForScene(sceneIndex) {
 }
 
 function selectClip(vi, oi) {
+  if (!state.visualsData || !state.visualsData[vi]) return;
   state.visualsData[vi].selected_index = oi;
-  const blocks = document.querySelectorAll('.visual-block');
-  if (blocks[vi]) {
-    const options = blocks[vi].querySelectorAll('.clip-option');
-    options.forEach((el, i) => {
-      el.classList.toggle('selected', i === oi);
-    });
-  }
+  // Re-render so the selected class lands on the right tile *after* filtering
+  // and the download button enable-state updates immediately.
+  render();
 }
 
 // ── Deleted clips blacklist (persisted in localStorage per topic) ─
@@ -1702,12 +1704,11 @@ function saveDeletedIds(topic, idsSet) {
   }
 }
 
-async function deleteClipOption(vi, oi, ev) {
-  if (ev) { ev.stopPropagation(); ev.preventDefault(); }
-  const visual = state.visualsData[vi];
-  if (!visual) return;
+async function deleteClipOption(vi, oi) {
+  const visual = state.visualsData && state.visualsData[vi];
+  if (!visual) { console.warn('deleteClipOption: no visual at', vi); return; }
   const opt = (visual.options || [])[oi];
-  if (!opt || !opt.video_id) return;
+  if (!opt || !opt.video_id) { console.warn('deleteClipOption: no option at', vi, oi); return; }
 
   if (!state.deletedVideoIds) state.deletedVideoIds = new Set();
   state.deletedVideoIds.add(opt.video_id);
@@ -1749,7 +1750,10 @@ async function researchVisual(vi) {
     visual.options = res.options || [];
     visual.selected_index = visual.options.length > 0 ? 0 : null;
     visual._researching = false;
-    visual._researchError = null;
+    // Empty result → mark as "exhausted" so the auto re-search doesn't loop forever.
+    visual._researchError = visual.options.length === 0
+      ? 'Geen nieuwe clips meer beschikbaar — alle alternatieven zijn geblacklist'
+      : null;
     render();
   } catch(e) {
     visual._researching = false;
