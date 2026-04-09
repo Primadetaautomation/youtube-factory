@@ -32,18 +32,21 @@ echo   FFmpeg gevonden.
 set APP_DIR=%USERPROFILE%\youtube-factory
 if not exist "%APP_DIR%" mkdir "%APP_DIR%"
 
-:: Download if needed
-if not exist "%APP_DIR%\server.py" (
+:: Download of updaten
+if exist "%APP_DIR%\.git" (
+    echo   App updaten...
+    cd /d "%APP_DIR%"
+    git pull origin main
+) else (
     echo   Downloaden...
-    git clone https://github.com/engelbr/youtube-factory.git "%APP_DIR%" 2>nul
+    git clone https://github.com/Primadetaautomation/youtube-factory.git "%APP_DIR%"
     if errorlevel 1 (
         echo   Git niet gevonden. Installeer git of download handmatig.
         pause
         exit /b 1
     )
+    cd /d "%APP_DIR%"
 )
-
-cd /d "%APP_DIR%"
 
 :: Virtual environment
 echo   Virtual environment aanmaken...
